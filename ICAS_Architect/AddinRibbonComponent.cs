@@ -53,10 +53,11 @@ namespace ICAS_Architect
 
         private void btnLinkToRepository_Click(object sender, RibbonControlEventArgs e)
         {
-            Globals.ThisAddIn.sharepointManager.GetSPAccessToken();
+
+            Globals.ThisAddIn.sharepointManager.GetClientContext(true,true);
             Visio.Document docStencle = Globals.ThisAddIn.Application.Documents.OpenEx("ICAS Data Architect.vssx", (short)6);
             //GG Now we need to link the table information
-            Globals.ThisAddIn.sharepointManager.LoadTablesList();
+            //Globals.ThisAddIn.sharepointManager.getAllTableDataRecordsets();
         }
 
         private void btnUploadToSP_Click(object sender, RibbonControlEventArgs e)

@@ -32,9 +32,9 @@ namespace Utilites
         public static void DisplayVisioStatus(string message)
         {
             ICAS_Architect.Globals.ThisAddIn.Application.QueueMarkerEvent("ScopeStart");
-            //            Microsoft.Office.Interop.Visio.Shape shpStatus = Globals.ThisAddIn.Application.ActivePage.DrawRectangle(0, 0, 10, .25);
             Microsoft.Office.Interop.Visio.Shape shpStatus = ICAS_Architect.Globals.ThisAddIn.Application.ActivePage.DrawRectangle(0, 0, 4, .25);
             shpStatus.Text = message;
+            ICAS_Architect.Globals.ThisAddIn.Application.ActiveWindow.Select(shpStatus, 256);
             Utilites.ScreenEvents.DoEvents();
             shpStatus.Delete();
             ICAS_Architect.Globals.ThisAddIn.Application.QueueMarkerEvent("ScopeEnd");

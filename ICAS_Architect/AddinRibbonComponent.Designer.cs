@@ -52,7 +52,6 @@ namespace ICAS_Architect
             this.Administration = this.Factory.CreateRibbonMenu();
             this.btnShowEntities = this.Factory.CreateRibbonButton();
             this.btnDownloadDynamics = this.Factory.CreateRibbonButton();
-            this.btnImportDB = this.Factory.CreateRibbonButton();
             this.group4 = this.Factory.CreateRibbonGroup();
             this.chkDrawRelatedEntities = this.Factory.CreateRibbonCheckBox();
             this.chkShowAttributes = this.Factory.CreateRibbonCheckBox();
@@ -90,6 +89,7 @@ namespace ICAS_Architect
             // 
             this.group2.Items.Add(this.btnLinkToRepository);
             this.group2.Items.Add(this.btnUploadToSP);
+            this.group2.Items.Add(this.btnImportFromRepository);
             this.group2.Label = "ICAS_Architect";
             this.group2.Name = "group2";
             // 
@@ -141,13 +141,12 @@ namespace ICAS_Architect
             // 
             this.group3.Items.Add(this.btnImportJSON);
             this.group3.Items.Add(this.btnImportDBm);
-            this.group3.Items.Add(this.btnImportFromRepository);
+            this.group3.Items.Add(this.btnDownloadDynamics);
             this.group3.Label = "Import MetaData";
             this.group3.Name = "group3";
             // 
             // btnImportJSON
             // 
-            this.btnImportJSON.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
             this.btnImportJSON.Image = global::ICAS_Architect.Properties.Resources.JSON_Image;
             this.btnImportJSON.Label = "Import JSON";
             this.btnImportJSON.Name = "btnImportJSON";
@@ -156,7 +155,6 @@ namespace ICAS_Architect
             // 
             // btnImportDBm
             // 
-            this.btnImportDBm.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
             this.btnImportDBm.Image = global::ICAS_Architect.Properties.Resources.DB_Image;
             this.btnImportDBm.Label = "SQL DB ";
             this.btnImportDBm.Name = "btnImportDBm";
@@ -166,7 +164,7 @@ namespace ICAS_Architect
             // btnImportFromRepository
             // 
             this.btnImportFromRepository.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
-            this.btnImportFromRepository.Image = global::ICAS_Architect.Properties.Resources.download;
+            this.btnImportFromRepository.Image = global::ICAS_Architect.Properties.Resources.sharepoint;
             this.btnImportFromRepository.Label = "Import Repository";
             this.btnImportFromRepository.Name = "btnImportFromRepository";
             this.btnImportFromRepository.ShowImage = true;
@@ -181,8 +179,6 @@ namespace ICAS_Architect
             // Administration
             // 
             this.Administration.Items.Add(this.btnShowEntities);
-            this.Administration.Items.Add(this.btnDownloadDynamics);
-            this.Administration.Items.Add(this.btnImportDB);
             this.Administration.Label = "Administration";
             this.Administration.Name = "Administration";
             // 
@@ -195,19 +191,11 @@ namespace ICAS_Architect
             // 
             // btnDownloadDynamics
             // 
-            this.btnDownloadDynamics.Image = global::ICAS_Architect.Properties.Resources.Command1;
+            this.btnDownloadDynamics.Image = global::ICAS_Architect.Properties.Resources.download;
             this.btnDownloadDynamics.Label = "Import Dx API";
             this.btnDownloadDynamics.Name = "btnDownloadDynamics";
             this.btnDownloadDynamics.ShowImage = true;
             this.btnDownloadDynamics.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnDownloadDynamics_Click);
-            // 
-            // btnImportDB
-            // 
-            this.btnImportDB.Image = global::ICAS_Architect.Properties.Resources.Command1;
-            this.btnImportDB.Label = "Import DB ";
-            this.btnImportDB.Name = "btnImportDB";
-            this.btnImportDB.ShowImage = true;
-            this.btnImportDB.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnImportDB_Click);
             // 
             // group4
             // 
@@ -278,7 +266,6 @@ namespace ICAS_Architect
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnUploadToSP;
         internal Microsoft.Office.Tools.Ribbon.RibbonGroup grpUtils;
         internal Microsoft.Office.Tools.Ribbon.RibbonMenu Administration;
-        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnImportDB;
         internal Microsoft.Office.Tools.Ribbon.RibbonGroup group3;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnImportJSON;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnImportDBm;

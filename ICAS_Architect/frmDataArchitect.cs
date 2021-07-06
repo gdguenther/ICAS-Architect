@@ -23,7 +23,7 @@ namespace ICAS_Architect
 
         internal void FilterTables()
         {
-            sharepointManager.LoadTablesList(this.cboApplications.Text, this.cboDatabase.Text, this.chkIncludeViews.Checked, this.chkIncludeAPIs.Checked);
+            sharepointManager.getAllTableDataRecordsets(this.cboApplications.Text, this.cboDatabase.Text, this.chkIncludeViews.Checked, this.chkIncludeAPIs.Checked);
         }
 
 

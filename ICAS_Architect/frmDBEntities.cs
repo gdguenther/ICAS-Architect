@@ -256,7 +256,7 @@ namespace ICAS_Architect
             using (SqlConnection connection = new SqlConnection(connectionString))
             {
 
-                string queryString = "Select * from Information_Schema.Tables order by table_schema, table_name";
+                string queryString = "Select Database_Name = Table_Catalog, Table_Schema, Table_Name, Table_Type from Information_Schema.Tables order by table_schema, table_name";
                 SqlCommand command = new SqlCommand(queryString, connection);
                 connection.Open();
                 SqlDataReader sqlDataReader = command.ExecuteReader();

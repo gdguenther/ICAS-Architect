@@ -355,7 +355,7 @@ namespace ICAS_Architect
             string headString = "<xml xmlns:s='uuid:BDC6E3F0-6DA3-11d1-A2A3-00AA00C14882' xmlns:dt='uuid:C2F41010-65B3-11d1-A29F-00AA00C14882' xmlns:rs='urn:schemas-microsoft-com:rowset' xmlns:z='#RowsetSchema'>" +
              " <s:Schema id='RowsetSchema'> <s:ElementType name='row' content='eltOnly' rs:updatable='true'>" +
              " <s:AttributeType name='c1' rs:name='Table_Name' rs:number='1' rs:nullable='true' rs:maydefer='true' rs:write='true'> <s:datatype dt:type='string' dt:maxLength='255' rs:precision='0'/> </s:AttributeType>" +
-             " <s:AttributeType name='c2' rs:name='Database' rs:number='2' rs:nullable='true' rs:maydefer='true' rs:write='true'> <s:datatype dt:type='string' dt:maxLength='255' rs:precision='0'/> </s:AttributeType>" +
+             " <s:AttributeType name='c2' rs:name='Database_Name' rs:number='2' rs:nullable='true' rs:maydefer='true' rs:write='true'> <s:datatype dt:type='string' dt:maxLength='255' rs:precision='0'/> </s:AttributeType>" +
              " <s:AttributeType name='c3' rs:name='Table_Type' rs:number='3' rs:nullable='true' rs:maydefer='true' rs:write='true'> <s:datatype dt:type='string' dt:maxLength='255' rs:precision='0'/> </s:AttributeType>" +
              " <s:AttributeType name='c4' rs:name='Description' rs:number='4' rs:nullable='true' rs:maydefer='true' rs:write='true'> <s:datatype dt:type='string' dt:maxLength='255' rs:precision='0'/> </s:AttributeType>" +
              " <s:AttributeType name='c5' rs:name='Application' rs:number='5' rs:nullable='true' rs:maydefer='true' rs:write='true'> <s:datatype dt:type='string' dt:maxLength='255' rs:precision='0'/> </s:AttributeType>" +
@@ -461,8 +461,8 @@ namespace ICAS_Architect
              " <s:AttributeType name='c3' rs:name='TableMany' rs:number='3' rs:nullable='true' rs:maydefer='true' rs:write='true'> <s:datatype dt:type='string' dt:maxLength='255' rs:precision='0'/> </s:AttributeType>" +
              " <s:AttributeType name='c4' rs:name='ColumnOne' rs:number='4' rs:nullable='true' rs:maydefer='true' rs:write='true'> <s:datatype dt:type='string' dt:maxLength='255' rs:precision='0'/> </s:AttributeType>" +
              " <s:AttributeType name='c5' rs:name='ColumnMany' rs:number='5' rs:nullable='true' rs:maydefer='true' rs:write='true'> <s:datatype dt:type='string' dt:maxLength='255' rs:precision='0'/> </s:AttributeType>" +
-             " <s:AttributeType name='c6' rs:name='Intersect_Entity' rs:number='6' rs:nullable='true' rs:maydefer='true' rs:write='true'> <s:datatype dt:type='string' dt:maxLength='255' rs:precision='0'/> </s:AttributeType>" +
-             " <s:AttributeType name='c7' rs:name='Connection_Type' rs:number='7' rs:nullable='true' rs:maydefer='true' rs:write='true'> <s:datatype dt:type='string' dt:maxLength='255' rs:precision='0'/> </s:AttributeType>" +
+             " <s:AttributeType name='c6' rs:name='Connection_Type' rs:number='6' rs:nullable='true' rs:maydefer='true' rs:write='true'> <s:datatype dt:type='string' dt:maxLength='255' rs:precision='0'/> </s:AttributeType>" +
+             " <s:AttributeType name='c7' rs:name='Intersect_Entity' rs:number='7' rs:nullable='true' rs:maydefer='true' rs:write='true'> <s:datatype dt:type='string' dt:maxLength='255' rs:precision='0'/> </s:AttributeType>" +
              " <s:extends type='rs:rowbase'/>" +
              " </s:ElementType> </s:Schema>";
             dts = headString + new System.Xml.Linq.XElement("rs_____data", ERI.ERRelations.Select(x => new System.Xml.Linq.XElement("z_____row",
@@ -563,7 +563,7 @@ namespace ICAS_Architect
 
         internal void CreateTableDataRecordsetFromSQL()
         {
-            var queryString = "select Table_Name=TABLE_SCHEMA + '.' + TABLE_NAME, [Database]=TABLE_CATALOG, Table_Type, Description= '', Application= '', Display_Name=Table_Name from INFORMATION_SCHEMA.tables [z:row] for xml auto";
+            var queryString = "select Table_Name=TABLE_SCHEMA + '.' + TABLE_NAME, [Database_Name]=TABLE_CATALOG, Table_Type, Description= '', Application= '', Display_Name=Table_Name from INFORMATION_SCHEMA.tables [z:row] for xml auto";
 
             SqlCommand sqlCommand = new SqlCommand(queryString, sqlConnection);
             SqlDataReader sqlDataReader = sqlCommand.ExecuteReader();
@@ -575,7 +575,7 @@ namespace ICAS_Architect
             string dts = "<xml xmlns:s='uuid:BDC6E3F0-6DA3-11d1-A2A3-00AA00C14882' xmlns:dt='uuid:C2F41010-65B3-11d1-A29F-00AA00C14882' xmlns:rs='urn:schemas-microsoft-com:rowset' xmlns:z='#RowsetSchema'>" +
              " <s:Schema id='RowsetSchema'> <s:ElementType name='row' content='eltOnly' rs:updatable='true'>" +
              CreateXMLHeaderLine(1,"Table_Name", "string") +
-             CreateXMLHeaderLine(2, "Database", "string") +
+             CreateXMLHeaderLine(2, "Database_Name", "string") +
              CreateXMLHeaderLine(3, "Table_Type", "string") +
              CreateXMLHeaderLine(4, "Description", "string") +
              CreateXMLHeaderLine(5, "Application", "string") +
@@ -601,7 +601,7 @@ namespace ICAS_Architect
         internal void CreateColumnDataRecordsetFromSQL()
         {
             var queryString = "select Table_Name = [z:row].Table_schema + '.' + [z:row].table_name, [z:row].Column_name, [z:row].Data_Type, Description = null, [z:row].ORDINAL_POSITION,  " +
-                 " Is_Primary = iif(cu.column_name is null, 0, 1), Is_Nullable=iif(is_nullable='yes', 1, 0), [z:row].CHARACTER_MAXIMUM_LENGTH, [z:row].CHARACTER_OCTET_LENGTH, [z:row].NUMERIC_PRECISION, [z:row].NUMERIC_PRECISION_RADIX, [z:row].NUMERIC_SCALE, [z:row].DATETIME_PRECISION, DB_NAME() [Database]  " +
+                 " Is_Primary = iif(cu.column_name is null, 0, 1), Is_Nullable=iif(is_nullable='yes', 1, 0), [z:row].CHARACTER_MAXIMUM_LENGTH, [z:row].CHARACTER_OCTET_LENGTH, [z:row].NUMERIC_PRECISION, [z:row].NUMERIC_PRECISION_RADIX, [z:row].NUMERIC_SCALE, [z:row].DATETIME_PRECISION, DB_NAME() [Database_Name]  " +
                  "    from INFORMATION_SCHEMA.columns [z:row] left join INFORMATION_SCHEMA.KEY_COLUMN_USAGE cu  " +
                  "         on [z:row].table_schema = cu.table_schema and [z:row].table_name = cu.table_name and [z:row].column_name = cu.column_name and OBJECTPROPERTY(OBJECT_ID(cu.CONSTRAINT_SCHEMA +'.' + QUOTENAME(cu.CONSTRAINT_NAME)), 'IsPrimaryKey') = 1 AND cu.TABLE_NAME = 'TableName' AND cu.TABLE_SCHEMA = 'Schema' " +
                  " for xml auto";
@@ -616,7 +616,7 @@ namespace ICAS_Architect
             string dts = "<xml xmlns:s='uuid:BDC6E3F0-6DA3-11d1-A2A3-00AA00C14882' xmlns:dt='uuid:C2F41010-65B3-11d1-A29F-00AA00C14882' xmlns:rs='urn:schemas-microsoft-com:rowset' xmlns:z='#RowsetSchema'>" +
              " <s:Schema id='RowsetSchema'> <s:ElementType name='row' content='eltOnly' rs:updatable='true'>" +
              CreateXMLHeaderLine(1, "Table_Name", "string") +
-             CreateXMLHeaderLine(2, "Column_name", "string") +
+             CreateXMLHeaderLine(2, "Column_Name", "string") +
              CreateXMLHeaderLine(3, "Data_Type", "string") +
              CreateXMLHeaderLine(4, "Description", "string") +
              CreateXMLHeaderLine(5, "Ordinal_Position", "int") +
@@ -625,10 +625,10 @@ namespace ICAS_Architect
              CreateXMLHeaderLine(7, "Character_Maximum_Length", "string") +
              CreateXMLHeaderLine(8, "Character_Octet_Length", "string") +
              CreateXMLHeaderLine(9, "Numeric_Precision", "string") +
-             CreateXMLHeaderLine(10, "Numeric_Precision_radix", "string") +
+             CreateXMLHeaderLine(10, "Numeric_Precision_Radix", "string") +
              CreateXMLHeaderLine(11, "Numeric_Scale", "string") +
              CreateXMLHeaderLine(12, "DateTime_Precision", "string") +
-             CreateXMLHeaderLine(13, "Database", "string") +
+             CreateXMLHeaderLine(13, "Database_Name", "string") +
              " <s:extends type='rs:rowbase'/>" +
              " </s:ElementType> </s:Schema>  <rs:data> " +
 
@@ -653,7 +653,7 @@ namespace ICAS_Architect
             var queryString = "select schema_name(fk_tab.schema_id) + '.' + fk_tab.name as EntityMany, " +
                                     " schema_name(pk_tab.schema_id) + '.' + pk_tab.name as EntityOne,  " +
                                     " substring(column_names, 1, len(column_names) - 1) as [AttributeMany],  " +
-                                    " [z:row].name as RelationName, DB_NAME() [Database], 'Foreign Key' as Connection_Type " +
+                                    " [z:row].name as RelationName, DB_NAME() [Database_Name], 'Foreign Key' as Connection_Type " +
                                 " from sys.foreign_keys[z:row] " +
                                         " inner join sys.tables fk_tab on fk_tab.object_id = [z:row].parent_object_id " +
                                         " inner join sys.tables pk_tab  on pk_tab.object_id = [z:row].referenced_object_id " +
@@ -676,7 +676,7 @@ namespace ICAS_Architect
              CreateXMLHeaderLine(2, "EntityOne", "string") +
              CreateXMLHeaderLine(3, "AttributeMany", "string") +
              CreateXMLHeaderLine(4, "RelationName", "string") +
-             CreateXMLHeaderLine(5, "Database", "string") +
+             CreateXMLHeaderLine(5, "Database_Name", "string") +
              " <s:extends type='rs:rowbase'/>" +
              " </s:ElementType> </s:Schema>  <rs:data> " +
 
@@ -727,7 +727,7 @@ namespace ICAS_Architect
             {
                 string connectionString = "Provider=SQLOLEDB.1;Integrated Security=SSPI;Data Source=" + getServer + ";Initial Catalog=" + getDB + ";";
 
-                var queryString = "select  Table_Name = TABLE_SCHEMA + '.' + TABLE_NAME, Table_Type=TABLE_TYPE, Description=null, Application=null, Display_Name=TABLE_NAME, [Database]=TABLE_CATALOG from Information_Schema.Tables";
+                var queryString = "select  Table_Name = TABLE_SCHEMA + '.' + TABLE_NAME, Table_Type=TABLE_TYPE, Description=null, Application=null, Display_Name=TABLE_NAME, [Database_Name]=TABLE_CATALOG from Information_Schema.Tables";
                 //            tableRecordset = vApplication.ActiveDocument.DataRecordsets.Add(connectionString, queryString, 0, "Tables");
                 tableRecordset = vApplication.ActiveDocument.DataRecordsets.Add(connectionString, queryString, 0, "Tables");
 
@@ -736,7 +736,7 @@ namespace ICAS_Architect
                 Utilites.ScreenEvents.DoEvents();
 
                 queryString = "select Table_Name = col.Table_schema + '.' + col.table_name, col.Column_Name, col.Data_Type, Description = null, col.Ordinal_Position, " +
-                    " Is_Primary = iif(cu.column_name is null, 0, 1), col.Character_Maximum_Length, col.Character_Octet_Length, col.Numeric_Precision, col.Numeric_Precision_Radix, col.Numeric_Scale, Date_Time_Precision=col.DateTime_Precision, DB_NAME() [Database] " +
+                    " Is_Primary = iif(cu.column_name is null, 0, 1), col.Character_Maximum_Length, col.Character_Octet_Length, col.Numeric_Precision, col.Numeric_Precision_Radix, col.Numeric_Scale, Date_Time_Precision=col.DateTime_Precision, col.table_catalog [Database_Name] " +
                     " from INFORMATION_SCHEMA.columns col left join INFORMATION_SCHEMA.KEY_COLUMN_USAGE cu " +
                     " on col.table_schema = cu.table_schema and col.table_name = cu.table_name and col.column_name = cu.column_name and OBJECTPROPERTY(OBJECT_ID(cu.CONSTRAINT_SCHEMA +'.' + QUOTENAME(cu.CONSTRAINT_NAME)), 'IsPrimaryKey') = 1 AND cu.TABLE_NAME = 'TableName' AND cu.TABLE_SCHEMA = 'Schema'";
 
@@ -746,7 +746,7 @@ namespace ICAS_Architect
                 queryString = "select schema_name(fk_tab.schema_id) + '.' + fk_tab.name as  TableMany," +
                     "    schema_name(pk_tab.schema_id) + '.' + pk_tab.name as  TableOne," +
                     "    substring(column_names, 1, len(column_names) - 1) as [ColumnMany]," +
-                    "    fk.name as Relation_Name, DB_NAME() as [Database], 'Foreign Key' as Connection_Type" +
+                    "    fk.name as Relation_Name, DB_NAME() as [Database_Name], 'Foreign Key' as Connection_Type" +
                     " from sys.foreign_keys fk" +
                     "    inner join sys.tables fk_tab on fk_tab.object_id = fk.parent_object_id" +
                     "    inner join sys.tables pk_tab on pk_tab.object_id = fk.referenced_object_id" +
@@ -766,7 +766,7 @@ namespace ICAS_Architect
             catch(Exception e)
             {
                 Console.WriteLine(e.Message);
-                ConnectToSQLServerMSI(txtServer, txtDatabase);
+                ConnectToSQLServerMSI(getServer, getDB);
                 sqlConnection.Open();
 
                 CreateTableDataRecordsetFromSQL();

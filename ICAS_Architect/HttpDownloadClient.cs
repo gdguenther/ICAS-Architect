@@ -36,8 +36,13 @@ namespace ICAS_Architect
             const string authority = "https://login.microsoftonline.com/common";
             var context = new AuthenticationContext(authority, false);
 
-            var platformParameters = new PlatformParameters(PromptBehavior.SelectAccount);
+            //GG: going to try auto for a while
+            //var platformParameters = new PlatformParameters(PromptBehavior.SelectAccount);
+            var platformParameters = new PlatformParameters(PromptBehavior.Auto);
+
             accessToken = context.AcquireTokenAsync(baseUrl, clientId, new Uri(redirectUri), platformParameters, UserIdentifier.AnyUser).Result.AccessToken;
+
+
 
             //GG: Security Protocol must be set to Tls12 which VSTO tries to override
             System.Net.ServicePointManager.SecurityProtocol = (System.Net.SecurityProtocolType)3072;
