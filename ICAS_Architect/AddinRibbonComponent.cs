@@ -65,7 +65,7 @@ namespace ICAS_Architect
 //            SharepointManager sharepointManager = new SharepointManager();
 //            sharepointManager.UploadTableChanges();
             
-            Globals.ThisAddIn.sharepointManager.UploadToSharePoint();
+            Globals.ThisAddIn.sharepointManager.UploadCompleteDataRecordsetToSharepoint();
         }
 
         private void btnOptionSet_Click(object sender, RibbonControlEventArgs e)

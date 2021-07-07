@@ -13,6 +13,17 @@ using System.Diagnostics;
 using System.Data.SqlClient;
 
 
+
+/***************************************************************************************************************
+ * 
+ * 
+ * 
+ *          No longer used
+ * 
+ * 
+ * 
+ * **************************************************************************************************************/
+
 namespace ICAS_Architect
 {
     public partial class frmDynamicsEntities : Form
@@ -234,7 +245,8 @@ namespace ICAS_Architect
         {
             //SharepointManager sharepointManager = new SharepointManager();
             //sharepointManager.UploadERInformation(this.ERI);
-            Globals.ThisAddIn.sharepointManager.UploadERInformation(this.ERI);
+            MessageBox.Show("No longer used");
+            //            Globals.ThisAddIn.sharepointManager.UploadERInformation(this.ERI);
         }
 
         DataSet dataSet = null;

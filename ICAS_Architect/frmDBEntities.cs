@@ -231,12 +231,12 @@ namespace ICAS_Architect
         }
 
 
-        private void btnUpload_Click(object sender, EventArgs e)
-        {
-            SharepointManager sharepointManager = new SharepointManager();
-            sharepointManager.UploadERInformation(this.ERI);
-            //            Globals.ThisAddIn.sharepointManager.UploadERInformation(this.ERI);
-        }
+        //private void btnUpload_Click(object sender, EventArgs e)
+        //{
+        //    SharepointManager sharepointManager = new SharepointManager();
+        //    sharepointManager.UploadERInformation(this.ERI);
+        //    //            Globals.ThisAddIn.sharepointManager.UploadERInformation(this.ERI);
+        //}
 
 
         DataSet dataSet = null;

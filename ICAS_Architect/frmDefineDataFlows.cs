@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using Visio = Microsoft.Office.Interop.Visio;
 using Microsoft.SharePoint.Client;
+//using Microsoft.Office.Interop.Excel;
+using XL = Microsoft.Office.Interop.Excel;
 
 namespace ICAS_Architect
 {
@@ -276,15 +278,12 @@ namespace ICAS_Architect
         {
             try
             {
-                DataTable tmpDT = await sharepointManager.GetColumnsFromSharepoint(DBID, TableID, new string[] { "ID", "Table_NameId", "Description", "Title", "Data_Type" }, new string[] { "Table_NameID", "Column_Name" });
-                if (tmpDT is null) return;
-                // We cache the column information locally.
-                if (sourceColumnDataTable is null)
-                    sourceColumnDataTable = tmpDT;
-                else
-                    sourceColumnDataTable.Merge(tmpDT);
+                if (sourceColumnDataTable == null)
+                    sourceColumnDataTable = await sharepointManager.GetColumnsFromSharepoint(DBID, TableID, new string[] { "ID", "Table_NameId", "Description", "Title", "Data_Type" }, new string[] { "Table_NameID", "Column_Name" });
+                else if (sourceColumnDataTable.Select("Table_NameId=" + TableID.ToString()).Length > 0)
+                    sourceColumnDataTable.Merge( await sharepointManager.GetColumnsFromSharepoint(DBID, TableID, new string[] { "ID", "Table_NameId", "Description", "Title", "Data_Type" }, new string[] { "Table_NameID", "Column_Name" }));
 
-                if (updateGrid)
+                if (updateGrid & sourceColumnDataTable != null)
                     SafeColumnDGComboboxUpdater();
             }
             catch (Exception e) { Console.WriteLine(e.Message); }
@@ -298,15 +297,12 @@ namespace ICAS_Architect
         {
             try
             {
-                DataTable tmpDT = await sharepointManager.GetColumnsFromSharepoint(DBID, TableID, new string[] { "ID", "Table_NameId", "Description", "Title", "Data_Type" }, new string[] { "Table_NameID", "Column_Name" });
+                if (destColumnDataTable == null)
+                    destColumnDataTable = await sharepointManager.GetColumnsFromSharepoint(DBID, TableID, new string[] { "ID", "Table_NameId", "Description", "Title", "Data_Type" }, new string[] { "Table_NameID", "Column_Name" });
+                else if (destColumnDataTable.Select("Table_NameId=" + TableID.ToString()).Length > 0)
+                    destColumnDataTable.Merge(await sharepointManager.GetColumnsFromSharepoint(DBID, TableID, new string[] { "ID", "Table_NameId", "Description", "Title", "Data_Type" }, new string[] { "Table_NameID", "Column_Name" }));
 
-                if (tmpDT is null) return false;
-                // We cache the column information locally.
-                if (destColumnDataTable is null)
-                    destColumnDataTable = tmpDT;
-                else
-                    destColumnDataTable.Merge(tmpDT);
-                if (updateGrid)
+                if (updateGrid & destColumnDataTable != null)
                     SafeColumnDGUpdater(TableID);
             }
             catch (Exception e) { Console.WriteLine(e.Message); return false; }
@@ -493,32 +489,29 @@ namespace ICAS_Architect
                 dtRelations.Columns.Add("Table_Many");
                 dtRelations.Columns.Add("Column_One");                      //blanks are fine here
                 dtRelations.Columns.Add("Column_Many");
-                if (!dtDataFieldExists(dtRelations, "Table_OneId"))         dtRelations.Columns.Add("Table_OneId", typeof(string), "Source_TableId"); // <== this requires manual addition
-                if (!dtDataFieldExists(dtRelations, "Table_ManyId"))         dtRelations.Columns.Add("Table_ManyId", typeof(string), "Table_NameId"); //rename
-                if (!dtDataFieldExists(dtRelations, "Column_OneId"))        dtRelations.Columns.Add("Column_OneId", typeof(string), "Source_Column");
+                if (!dtDataFieldExists(dtRelations, "Table_OneId"))         dtRelations.Columns.Add("Table_OneId", typeof(long)); // <== this requires manual addition
+                if (!dtDataFieldExists(dtRelations, "Table_ManyId"))         dtRelations.Columns.Add("Table_ManyId", typeof(long), "Table_NameId"); //rename
+                if (!dtDataFieldExists(dtRelations, "Column_OneId"))        dtRelations.Columns.Add("Column_OneId", typeof(long), "Source_Column");
                 if (dtDataFieldExists(dtRelations, "Id"))                   dtRelations.Columns["Id"].ColumnName = "Column_ManyId";
                 if (!dtDataFieldExists(dtRelations, "Relation_Type"))       dtRelations.Columns.Add("Relation_Type", typeof(string), "'Data Flow'");
-                if (!dtDataFieldExists(dtRelations, "Relation_Level_One"))  dtRelations.Columns.Add("Relation_Level_One", typeof(string), "'Table'");
-                if (!dtDataFieldExists(dtRelations, "Relation_Level_Many")) dtRelations.Columns.Add("Relation_Level_Many", typeof(string), "'Table'");
-                if (!dtDataFieldExists(dtRelations, "ID"))                  dtRelations.Columns.Add("ID");
+                if (!dtDataFieldExists(dtRelations, "Relation_Level_One"))  dtRelations.Columns.Add("Relation_Level_One", typeof(string), "'Column'");
+                if (!dtDataFieldExists(dtRelations, "Relation_Level_Many")) dtRelations.Columns.Add("Relation_Level_Many", typeof(string), "'Column'");
+                if (!dtDataFieldExists(dtRelations, "ID"))                  dtRelations.Columns.Add("ID",typeof(long));
                 if (dtDataFieldExists(dtRelations, "Relation_Edit_Status")) dtRelations.Columns["Relation_Edit_Status"].ColumnName = "Edit_Status";
-                //foreach (DataRow row in dtRelations.Rows)
-                //{
-                //    if (row["Source_Column"].ToString() == "") continue;
-                //    var ret2 = sourceColumnDataTable.Select("[ID]='" + row["Column_OneId"].ToString() + "'");
-                //    if (ret2.Length > 0)
-                //    {
-                //        row["Table_OneId"] = (long)ret2[0]["Table_NameId"];
-                //        row["Table_One"] = (long)ret2[0]["Table_Name"];
-                //    }
-                //}
+                foreach (DataRow row in dtRelations.Rows)
+                {
+                    if (row["Source_Column"].ToString() == "") continue;
+                    var ret2 = sourceColumnDataTable.Select("[ID]='" + row["Column_OneId"].ToString() + "'");
+                    if (ret2.Length > 0)
+                    {
+                        row["Table_OneId"] = (long)ret2[0]["Table_NameId"];
+                    }
+                }
 
                 sharepointManager.saveRelationsToSharepoint(dtRelations, (cboFromDB.SelectedItem as ComboListInfo).ID, (cboToDB.SelectedItem as ComboListInfo).ID);
             }
-
-
-
         }
+
 
         private void SafeDGUpdateFocus(DataGridView dg, string colName, int row)
         {
@@ -646,6 +639,7 @@ namespace ICAS_Architect
             MatchAllTables((cboFromDB.SelectedItem as ComboListInfo).ID, (cboToDB.SelectedItem as ComboListInfo).ID);
             dgTables.CurrentCell = dgTables["Table_Name", 0];
             SafeColumnDGUpdater((long)dgTables["ID", 0].Value);
+
         }
 
         private void btnAutoMatchColumns_Click(object sender, EventArgs e)
@@ -660,6 +654,56 @@ namespace ICAS_Architect
             }
             dgTables.CurrentCell = dgTables["Table_Name", 0];
             SafeColumnDGUpdater((long)dgTables["ID", 0].Value);
+        }
+
+
+        private void WriteToExcel(DataTable dt)
+        {
+            XL.Application xl = new XL.Application();
+            xl.Visible = true;
+            var wb = xl.Workbooks.Add();
+            XL.Worksheet ws = wb.ActiveSheet;
+
+            // column headings               
+            int ColumnsCount = dt.Columns.Count;
+            object[] Header = new object[ColumnsCount];
+
+            for (int i = 0; i < ColumnsCount; i++)
+                Header[i] = dt.Columns[i].ColumnName;
+
+            Microsoft.Office.Interop.Excel.Range HeaderRange = ws.get_Range((Microsoft.Office.Interop.Excel.Range)(ws.Cells[1, 1]), (Microsoft.Office.Interop.Excel.Range)(ws.Cells[1, ColumnsCount]));
+            HeaderRange.Value = Header;
+            HeaderRange.Interior.Color = System.Drawing.ColorTranslator.ToOle(System.Drawing.Color.LightGray);
+            HeaderRange.Font.Bold = true;
+
+            // DataCells
+            int RowsCount = dt.Rows.Count;
+            object[,] Cells = new object[RowsCount, ColumnsCount];
+
+            for (int j = 0; j < RowsCount; j++)
+                for (int i = 0; i < dt.Columns.Count; i++)
+                    Cells[j, i] = dt.Rows[j][i];
+
+            ws.get_Range((Microsoft.Office.Interop.Excel.Range)(ws.Cells[2, 1]), (Microsoft.Office.Interop.Excel.Range)(ws.Cells[RowsCount + 1, ColumnsCount])).Value = Cells;
+
+
+
+        }
+
+
+        private async void GetMyStuff(long FromDB, long ToDB)
+        {
+            var fromCols = await sharepointManager.GetColumnsFromSharepointByDB(FromDB);
+            var toCols = await sharepointManager.GetColumnsFromSharepointByDB(ToDB);
+            var rel = await sharepointManager.GetRelationsFromSharepointByDB(ToDB, true);
+
+            WriteToExcel(toCols);
+            WriteToExcel(rel);
+        }
+
+        private void btnDocumentFlow_Click(object sender, EventArgs e)
+        {
+            GetMyStuff((long)cboFromDB.SelectedValue, (long)cboToDB.SelectedValue);
         }
     }
 
