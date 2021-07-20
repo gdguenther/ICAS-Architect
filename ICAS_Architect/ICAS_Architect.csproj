@@ -339,6 +339,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Class3.cs" />
     <Compile Include="DrawingManager.cs" />
     <Compile Include="DocManager\DocumentCreator.cs" />
     <Compile Include="DocManager\EventSink.cs" />

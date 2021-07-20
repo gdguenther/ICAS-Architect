@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Data;
 using System.Windows.Threading;
 using System.Collections.Generic;
 using System.Linq;
@@ -27,6 +28,32 @@ namespace Utilites
             ((DispatcherFrame)f).Continue = false;
 
             return null;
+        }
+
+
+        public static void DisplayVisioStatusPersistent(string message, string MarkerEvent = "")
+        {
+            Microsoft.Office.Interop.Visio.Shape shpStatus = null;
+            if (MarkerEvent == "ScopeStart")
+            {
+                ICAS_Architect.Globals.ThisAddIn.Application.QueueMarkerEvent(MarkerEvent);
+                shpStatus = ICAS_Architect.Globals.ThisAddIn.Application.ActivePage.DrawRectangle(0, 0, 4, .25);
+                shpStatus.NameU = "_Visio_Status";
+                ICAS_Architect.Globals.ThisAddIn.Application.ActiveWindow.Select(shpStatus, 256);
+            }
+            else
+                shpStatus = ICAS_Architect.Globals.ThisAddIn.Application.ActivePage.Shapes["_Visio_Status"];
+            Utilites.ScreenEvents.DoEvents();
+
+            shpStatus.Text = message;
+
+            Utilites.ScreenEvents.DoEvents();
+
+            if (MarkerEvent == "ScopeEnd")
+            {
+                ICAS_Architect.Globals.ThisAddIn.Application.QueueMarkerEvent(MarkerEvent);
+                shpStatus.Delete();
+            }
         }
 
         public static void DisplayVisioStatus(string message)

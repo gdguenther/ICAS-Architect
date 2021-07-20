@@ -38,24 +38,26 @@ namespace ICAS_Architect
             this.Tab1 = this.Factory.CreateRibbonTab();
             this.tab2 = this.Factory.CreateRibbonTab();
             this.group2 = this.Factory.CreateRibbonGroup();
+            this.btnLinkToRepository = this.Factory.CreateRibbonButton();
+            this.btnUploadToSP = this.Factory.CreateRibbonButton();
+            this.btnImportFromRepository = this.Factory.CreateRibbonButton();
             this.group1 = this.Factory.CreateRibbonGroup();
             this.cboDB = this.Factory.CreateRibbonComboBox();
             this.cboApp = this.Factory.CreateRibbonComboBox();
             this.chkShowViews = this.Factory.CreateRibbonCheckBox();
             this.group3 = this.Factory.CreateRibbonGroup();
+            this.btnImportJSON = this.Factory.CreateRibbonButton();
+            this.btnImportDBm = this.Factory.CreateRibbonButton();
+            this.btnDownloadDynamics = this.Factory.CreateRibbonButton();
             this.grpUtils = this.Factory.CreateRibbonGroup();
+            this.Administration = this.Factory.CreateRibbonMenu();
+            this.btnShowEntities = this.Factory.CreateRibbonButton();
+            this.btnCopySPToExcel = this.Factory.CreateRibbonButton();
+            this.btnCopyExceltoSP = this.Factory.CreateRibbonButton();
             this.group4 = this.Factory.CreateRibbonGroup();
             this.chkDrawRelatedEntities = this.Factory.CreateRibbonCheckBox();
             this.chkShowAttributes = this.Factory.CreateRibbonCheckBox();
             this.group5 = this.Factory.CreateRibbonGroup();
-            this.btnLinkToRepository = this.Factory.CreateRibbonButton();
-            this.btnUploadToSP = this.Factory.CreateRibbonButton();
-            this.btnImportFromRepository = this.Factory.CreateRibbonButton();
-            this.btnImportJSON = this.Factory.CreateRibbonButton();
-            this.btnImportDBm = this.Factory.CreateRibbonButton();
-            this.btnDownloadDynamics = this.Factory.CreateRibbonButton();
-            this.Administration = this.Factory.CreateRibbonMenu();
-            this.btnShowEntities = this.Factory.CreateRibbonButton();
             this.btnDefineDataFlow = this.Factory.CreateRibbonButton();
             this.Tab1.SuspendLayout();
             this.tab2.SuspendLayout();
@@ -92,6 +94,34 @@ namespace ICAS_Architect
             this.group2.Items.Add(this.btnImportFromRepository);
             this.group2.Label = "ICAS_Architect";
             this.group2.Name = "group2";
+            // 
+            // btnLinkToRepository
+            // 
+            this.btnLinkToRepository.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
+            this.btnLinkToRepository.Image = global::ICAS_Architect.Properties.Resources.Repository;
+            this.btnLinkToRepository.Label = "Link to Repository";
+            this.btnLinkToRepository.Name = "btnLinkToRepository";
+            this.btnLinkToRepository.ShowImage = true;
+            this.btnLinkToRepository.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnLinkToRepository_Click);
+            // 
+            // btnUploadToSP
+            // 
+            this.btnUploadToSP.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
+            this.btnUploadToSP.Image = global::ICAS_Architect.Properties.Resources.Save_Image;
+            this.btnUploadToSP.Label = "Save to Repository";
+            this.btnUploadToSP.Name = "btnUploadToSP";
+            this.btnUploadToSP.ShowImage = true;
+            this.btnUploadToSP.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnUploadToSP_Click);
+            // 
+            // btnImportFromRepository
+            // 
+            this.btnImportFromRepository.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
+            this.btnImportFromRepository.Enabled = false;
+            this.btnImportFromRepository.Image = global::ICAS_Architect.Properties.Resources.sharepoint;
+            this.btnImportFromRepository.Label = "Import Repository";
+            this.btnImportFromRepository.Name = "btnImportFromRepository";
+            this.btnImportFromRepository.ShowImage = true;
+            this.btnImportFromRepository.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnImportFromRepository_Click);
             // 
             // group1
             // 
@@ -130,11 +160,64 @@ namespace ICAS_Architect
             this.group3.Label = "Import MetaData";
             this.group3.Name = "group3";
             // 
+            // btnImportJSON
+            // 
+            this.btnImportJSON.Image = global::ICAS_Architect.Properties.Resources.JSON_Image;
+            this.btnImportJSON.Label = "Import JSON";
+            this.btnImportJSON.Name = "btnImportJSON";
+            this.btnImportJSON.ShowImage = true;
+            this.btnImportJSON.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnImportJSON_Click);
+            // 
+            // btnImportDBm
+            // 
+            this.btnImportDBm.Image = global::ICAS_Architect.Properties.Resources.DB_Image;
+            this.btnImportDBm.Label = "SQL DB ";
+            this.btnImportDBm.Name = "btnImportDBm";
+            this.btnImportDBm.ShowImage = true;
+            this.btnImportDBm.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnImportDBm_Click);
+            // 
+            // btnDownloadDynamics
+            // 
+            this.btnDownloadDynamics.Image = global::ICAS_Architect.Properties.Resources.download;
+            this.btnDownloadDynamics.Label = "Import Dx API";
+            this.btnDownloadDynamics.Name = "btnDownloadDynamics";
+            this.btnDownloadDynamics.ShowImage = true;
+            this.btnDownloadDynamics.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnDownloadDynamics_Click);
+            // 
             // grpUtils
             // 
             this.grpUtils.Items.Add(this.Administration);
             this.grpUtils.Label = "Utilities";
             this.grpUtils.Name = "grpUtils";
+            // 
+            // Administration
+            // 
+            this.Administration.Items.Add(this.btnShowEntities);
+            this.Administration.Items.Add(this.btnCopySPToExcel);
+            this.Administration.Items.Add(this.btnCopyExceltoSP);
+            this.Administration.Label = "Administration";
+            this.Administration.Name = "Administration";
+            // 
+            // btnShowEntities
+            // 
+            this.btnShowEntities.Label = "Set up Sharepoint";
+            this.btnShowEntities.Name = "btnShowEntities";
+            this.btnShowEntities.ShowImage = true;
+            this.btnShowEntities.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnShowEntities_Click);
+            // 
+            // btnCopySPToExcel
+            // 
+            this.btnCopySPToExcel.Label = "Copy SP to Excel";
+            this.btnCopySPToExcel.Name = "btnCopySPToExcel";
+            this.btnCopySPToExcel.ShowImage = true;
+            this.btnCopySPToExcel.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnCopySPToExcel_Click);
+            // 
+            // btnCopyExceltoSP
+            // 
+            this.btnCopyExceltoSP.Label = "Upload XL to SP";
+            this.btnCopyExceltoSP.Name = "btnCopyExceltoSP";
+            this.btnCopyExceltoSP.ShowImage = true;
+            this.btnCopyExceltoSP.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnCopyExceltoSP_Click);
             // 
             // group4
             // 
@@ -160,71 +243,6 @@ namespace ICAS_Architect
             this.group5.Items.Add(this.btnDefineDataFlow);
             this.group5.Label = "Data Flows";
             this.group5.Name = "group5";
-            // 
-            // btnLinkToRepository
-            // 
-            this.btnLinkToRepository.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
-            this.btnLinkToRepository.Image = global::ICAS_Architect.Properties.Resources.Repository;
-            this.btnLinkToRepository.Label = "Link to Repository";
-            this.btnLinkToRepository.Name = "btnLinkToRepository";
-            this.btnLinkToRepository.ShowImage = true;
-            this.btnLinkToRepository.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnLinkToRepository_Click);
-            // 
-            // btnUploadToSP
-            // 
-            this.btnUploadToSP.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
-            this.btnUploadToSP.Image = global::ICAS_Architect.Properties.Resources.Save_Image;
-            this.btnUploadToSP.Label = "Save to Repository";
-            this.btnUploadToSP.Name = "btnUploadToSP";
-            this.btnUploadToSP.ShowImage = true;
-            this.btnUploadToSP.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnUploadToSP_Click);
-            // 
-            // btnImportFromRepository
-            // 
-            this.btnImportFromRepository.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
-            this.btnImportFromRepository.Enabled = false;
-            this.btnImportFromRepository.Image = global::ICAS_Architect.Properties.Resources.sharepoint;
-            this.btnImportFromRepository.Label = "Import Repository";
-            this.btnImportFromRepository.Name = "btnImportFromRepository";
-            this.btnImportFromRepository.ShowImage = true;
-            this.btnImportFromRepository.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnImportFromRepository_Click);
-            // 
-            // btnImportJSON
-            // 
-            this.btnImportJSON.Image = global::ICAS_Architect.Properties.Resources.JSON_Image;
-            this.btnImportJSON.Label = "Import JSON";
-            this.btnImportJSON.Name = "btnImportJSON";
-            this.btnImportJSON.ShowImage = true;
-            this.btnImportJSON.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnImportJSON_Click);
-            // 
-            // btnImportDBm
-            // 
-            this.btnImportDBm.Image = global::ICAS_Architect.Properties.Resources.DB_Image;
-            this.btnImportDBm.Label = "SQL DB ";
-            this.btnImportDBm.Name = "btnImportDBm";
-            this.btnImportDBm.ShowImage = true;
-            this.btnImportDBm.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnImportDBm_Click);
-            // 
-            // btnDownloadDynamics
-            // 
-            this.btnDownloadDynamics.Image = global::ICAS_Architect.Properties.Resources.download;
-            this.btnDownloadDynamics.Label = "Import Dx API";
-            this.btnDownloadDynamics.Name = "btnDownloadDynamics";
-            this.btnDownloadDynamics.ShowImage = true;
-            this.btnDownloadDynamics.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnDownloadDynamics_Click);
-            // 
-            // Administration
-            // 
-            this.Administration.Items.Add(this.btnShowEntities);
-            this.Administration.Label = "Administration";
-            this.Administration.Name = "Administration";
-            // 
-            // btnShowEntities
-            // 
-            this.btnShowEntities.Label = "Set up Sharepoint";
-            this.btnShowEntities.Name = "btnShowEntities";
-            this.btnShowEntities.ShowImage = true;
-            this.btnShowEntities.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnShowEntities_Click);
             // 
             // btnDefineDataFlow
             // 
@@ -282,6 +300,8 @@ namespace ICAS_Architect
         internal Microsoft.Office.Tools.Ribbon.RibbonCheckBox chkShowAttributes;
         internal Microsoft.Office.Tools.Ribbon.RibbonGroup group5;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnDefineDataFlow;
+        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnCopySPToExcel;
+        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnCopyExceltoSP;
     }
 
     partial class ThisRibbonCollection

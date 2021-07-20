@@ -2,27 +2,33 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.SharePoint.Client;
-using Microsoft.SharePoint;
 using System.Data;
 using System.Security.Cryptography;
 using System.Windows.Forms;
-using VA = VisioAutomation;
 using Visio = Microsoft.Office.Interop.Visio;
-using SP = Microsoft.SharePoint.Client;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using Newton = Newtonsoft.Json;
+using XL = Microsoft.Office.Interop.Excel;
 
 namespace ICAS_Architect
 {
-
-    public class JsonSPClass
+    internal class DTData
     {
-        public string property1 { get; set; }
-        public string property2 { get; set; }
-        public List<Dictionary<int, string>> property3 { get; set; }
+        public DataTable Applications = null;
+        public DataTable Databases = null;
+        public DataTable Tables = null;
+        public DataTable Columns = null;
+        public DataTable Relations = null;
+    }
+
+    public enum RecordStatus
+    {
+        DoesNotExist,
+        ExistsAndHasChanged,
+        ExistsAndHasNotChanged
     }
 
     internal class SharepointManager
@@ -41,18 +47,17 @@ namespace ICAS_Architect
         private Visio.DataRecordset relationRecordset = null;
 
         // These are our DataTables, where we can store updates.
-        private DataTable _dtApplications = null;
-        private DataTable _dtDatabases = null;
-        private DataTable _dtTables = null;
-        private DataTable _dtColumns = null;
-        //private DataTable _dtRelations = null;
+        private DTData repoData = null;
+        private DTData editData = null;
 
+        List<ComboListInfo> DatabaseList = null;
 
         internal SharepointManager()
         {
             vApplication = Globals.ThisAddIn.Application;
+            repoData = new DTData();
+            editData = new DTData();
         }
-
 
 
         /* Sets up the http register. To check if the requisite tables exist, pass in WarnIfTablesDontExist
@@ -88,7 +93,7 @@ namespace ICAS_Architect
                 Web web = gclientContext.Web;
                 gclientContext.Load(web);
                 gclientContext.Load(web.Lists);
-                gclientContext.ExecuteQueryRetry();
+            //    gclientContext.ExecuteQueryRetry();
 
                 if (!gclientContext.Web.ListExists("Tables") | !gclientContext.Web.ListExists("Columns") | !gclientContext.Web.ListExists("Relations"))
                 {
@@ -101,14 +106,61 @@ namespace ICAS_Architect
 
 
 
+        public static bool ViewExists(List list, string viewName)
+        {
+            if (string.IsNullOrEmpty(viewName))
+                return false;
+
+            foreach (var view in list.Views)
+                if (view.Title.ToLowerInvariant() == viewName.ToLowerInvariant())
+                    return true;
+
+            return false;
+        }
+
+
+        internal void CreateBackendView(string listName)
+        {
+            //These are the sharepoint field we would like to ignore in our view.
+            const string IgnoreFieldList = "FileSystemObjectType,ServerRedirectedEmbedUri,ServerRedirectedEmbedUrl,ContentTypeId,ComplianceAssetId,Created,AuthorId,OData__UIVersionString,Attachments,GUID,content type,item child count,folder child count,label setting,retention label applied,label applied by,item is a record,app created by,app modified by";
+
+            List targetList = gclientContext.Web.Lists.GetByTitle(listName);
+            ViewCollection viewCollection = targetList.Views;
+            gclientContext.Load(viewCollection);
+            ViewCreationInformation viewCreationInformation = new ViewCreationInformation();
+            viewCreationInformation.Title = "ICAS Backend";
+            viewCreationInformation.ViewTypeKind = ViewType.Html;
+
+            string tmp = Task.Run(async () => await GetSharePointListFields(listName, "System")).Result;
+            var spListFields = tmp.Split(',');
+
+            string wantedFields = "";
+            foreach (var fieldName in spListFields)
+                if (!IgnoreFieldList.ToLower().Contains("," + fieldName.ToLower() + ",") & fieldName != "")
+                    wantedFields += fieldName + ",";
+
+            if(wantedFields.Length > 0)
+                wantedFields = wantedFields.Substring(0, wantedFields.Length - 1);
+
+
+            viewCreationInformation.ViewFields = wantedFields.Split(',');
+
+            Microsoft.SharePoint.Client.View listView = viewCollection.Add(viewCreationInformation);
+            gclientContext.ExecuteQuery();
+
+            // Code to update the display name for the view.
+            listView.Title = "ICAS Backend";
+
+            listView.Update();
+            gclientContext.ExecuteQuery();
+        }
+
         /************************************************************************************
          * 
          * Use CSOM to create the tables. Can do it with the REST API, but it's not
          * documented.
          * 
          * *********************************************************************************/
-
-
         internal void CreateSharepointLists()
         {
             using (var clientContext = GetClientContext(false))      //.GetSharePointOnlineAuthenticatedContextTenant(siteUrl, userName, password))
@@ -155,6 +207,10 @@ namespace ICAS_Architect
                 }
 
 
+                //CreateBackendView("Applications");
+                
+
+
                 if (!clientContext.Web.ListExists("Databases"))
                 {
                     List list = clientContext.Web.CreateList(ListTemplateType.GenericList, "Databases", true, true, string.Empty, true);
@@ -182,6 +238,8 @@ namespace ICAS_Architect
                     clientContext.Load(list.Fields);
                     clientContext.ExecuteQuery();
                 }
+
+                //CreateBackendView("Databases");
 
 
                 if (!clientContext.Web.ListExists("Tables"))
@@ -216,6 +274,10 @@ namespace ICAS_Architect
                     clientContext.Load(list.Fields);
                     clientContext.ExecuteQuery();
                 }
+
+
+                // For tables, we can also add a user view which would use listView.Aggregations = "<FieldRef Name='Title' Type='COUNT'/>";
+                //CreateBackendView("Tables");
 
 
                 if (!clientContext.Web.ListExists("Columns"))
@@ -262,6 +324,8 @@ namespace ICAS_Architect
                     clientContext.ExecuteQuery();
                 }
 
+                //CreateBackendView("Columns");
+
 
                 if (!clientContext.Web.ListExists("Relations"))
                 {
@@ -289,8 +353,8 @@ namespace ICAS_Architect
                      * Column_OneId, Column_ManyId, Column_ManyId, Column_Many, Relation_Type, Relation_Level_One, Relation_Level_Many */
 
                     list.Fields.AddFieldAsXml("<Field Type='Text' DisplayName='Relation_Description' Name='Relation_Description'/>", true, AddFieldOptions.AddToDefaultContentType);
-                    list.Fields.AddFieldAsXml("<Field Type='Lookup' Name='Table_One' StaticName='Table_One' DisplayName='Table_One' List='" + refList.Id + "'  ID='{" + fielda + "}' ShowField = 'Table_Name'  RelationshipDeleteBehaviorType='Cascade' Indexed='TRUE' Required='TRUE' />", true, AddFieldOptions.AddToDefaultContentType);
-                    list.Fields.AddFieldAsXml("<Field Type='Lookup' Name='Table_Many' StaticName='Table_Many' DisplayName='Table_Many' List='" + refList.Id + "'  ID='{" + fieldc + "}' ShowField = 'Table_Name'  RelationshipDeleteBehaviorType='Cascade' Indexed='TRUE' Required='TRUE' />", true, AddFieldOptions.AddToDefaultContentType);
+                    list.Fields.AddFieldAsXml("<Field Type='Lookup' Name='Table_One' StaticName='Table_One' DisplayName='Table_One' List='" + refList.Id + "'  ID='{" + fielda + "}' ShowField = 'Full_Table_Name'  RelationshipDeleteBehaviorType='Cascade' Indexed='TRUE' Required='TRUE' />", true, AddFieldOptions.AddToDefaultContentType);
+                    list.Fields.AddFieldAsXml("<Field Type='Lookup' Name='Table_Many' StaticName='Table_Many' DisplayName='Table_Many' List='" + refList.Id + "'  ID='{" + fieldc + "}' ShowField = 'Full_Table_Name'  RelationshipDeleteBehaviorType='Cascade' Indexed='TRUE' Required='TRUE' />", true, AddFieldOptions.AddToDefaultContentType);
                     list.Fields.AddFieldAsXml("<Field Type='Lookup' Name='Column_One' StaticName='Column_One' DisplayName='Column_One' List='" + refListCol.Id + "'  ID='{" + fielde + "}' ShowField = 'Title'  RelationshipDeleteBehaviorType='Cascade' Indexed='TRUE' Required='FALSE' />", true, AddFieldOptions.AddToDefaultContentType);
                     list.Fields.AddFieldAsXml("<Field Type='Lookup' Name='Column_Many' StaticName='Column_Many' DisplayName='Column_Many' List='" + refListCol.Id + "'  ID='{" + fieldg + "}' ShowField = 'Title'  RelationshipDeleteBehaviorType='Cascade' Indexed='TRUE' Required='FALSE' />", true, AddFieldOptions.AddToDefaultContentType);
 
@@ -305,6 +369,9 @@ namespace ICAS_Architect
                     clientContext.Load(list.Fields);
                     clientContext.ExecuteQuery();
                 }
+
+                //CreateBackendView("Relations");
+
             }
         }
 
@@ -345,7 +412,7 @@ namespace ICAS_Architect
             }
             catch(Exception e)
             {
-                Console.WriteLine(e.Message);
+                Debug.WriteLine(e.Message);
             }
             System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.Default;
         }
@@ -464,7 +531,7 @@ namespace ICAS_Architect
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.Message);
+                Debug.WriteLine(e.Message);
             }
             return null;
         }
@@ -532,7 +599,7 @@ namespace ICAS_Architect
          *  "Table_Name" as it will be unique.
          * ******************************************************************************************************************************************/
 
-        internal async Task<DataTable> GetApplicationsFromSharepoint(string AppID, string[] fieldList, string[] PrimaryKey)
+        internal async Task<DataTable> GetApplicationsFromSharepoint(string AppID, string[] fieldList)
         {
             string selectString = (fieldList.Length > 0) ? "$select=" : "";
             string filterString = (AppID != "") ? "&$filter=Id eq '" + AppID + "'" : "";
@@ -540,75 +607,55 @@ namespace ICAS_Architect
             for (int i = 0; i < fieldList.Length; i++)
                 selectString = selectString + (i > 0 ? "," : "") + (fieldList[i]);
 
-            DataTable tmpdt= await retrieveDataTable(SPRepository + "/_api/lists/getbytitle('Applications')/items?" + selectString + "&" + filterString, 0, PrimaryKey);
-            tmpdt.Columns["Title"].ColumnName = "Application_Name";
+            DataTable tmpdt= await retrieveDataTable(SPRepository + "/_api/lists/getbytitle('Applications')/items?" + selectString + "&" + filterString, 0,  new string[] { "ID" });
+            if (tmpdt != null)
+                tmpdt.Columns["Title"].ColumnName = "Application_Name";
             return tmpdt;
         }
 
-        internal async Task<DataTable> GetDBsFromSharepoint(string AppID, string[] fieldList, string[] PrimaryKey)
+        internal async Task<DataTable> GetDBsFromSharepoint(long AppID)
         {
             // Retrieve the parent list (Applications)
-            DataTable dbApp = _dtApplications;
-            if (dbApp is null) dbApp = await GetApplicationsFromSharepoint("", new string[] { }, new string[] { "Id" });
-            _dtApplications = dbApp;
+            if (repoData.Applications is null) repoData.Applications = await GetApplicationsFromSharepoint("", new string[] { });
 
-            string selectString = (fieldList.Length > 0) ? "$select=" : "";
-            string filterString = (AppID != "") ? "$filter=Application_NameId eq '" + AppID + "'" : "";
-            string orderbyString = "&$orderby=Application_Name,Title";
+            string filterString = (AppID > 0) ? "$filter=Application_NameId eq '" + AppID + "'" : "";
 
-            for (int i = 0; i < fieldList.Length; i++)
-                selectString = selectString + (i > 0 ? "," : "") + (fieldList[i]);
-
-            DataTable dbDT = await retrieveDataTable(SPRepository + "/_api/lists/getbytitle('Databases')/items?" + selectString + filterString + orderbyString, 0, PrimaryKey);
+            DataTable dbDT = await retrieveDataTable(SPRepository + "/_api/lists/getbytitle('Databases')/items?" + filterString, 0, new string[] { "ID" });
+            if (dbDT == null) return null;
             dbDT.Columns["Title"].ColumnName = "Database_Name";
 
             dbDT.Columns.Add("Application_Name", typeof(string));
-
-            dbDT.AsEnumerable().Join(dbApp.AsEnumerable(),
+            dbDT.AsEnumerable().Join(repoData.Applications.AsEnumerable(),
                 _dtmater => Convert.ToString(_dtmater["Application_NameId"]),
                 _dtchild => Convert.ToString(_dtchild["id"]),
                 (_dtmater, _dtchild) => new { _dtmater, _dtchild }).ToList().ForEach(
                     o => o._dtmater.SetField("Application_Name", o._dtchild["Application_Name"].ToString())
                 );
             dbDT.Columns.Add("AppAndDB", typeof(string), "Application_Name + ' - ' + Database_Name");
-            
+
+
+            DatabaseList = new List<ComboListInfo>();
+            foreach (DataRow row in dbDT.Rows)
+                DatabaseList.Add(new ComboListInfo((long) row["ID"], row["AppAndDB"].ToString(), "DB", (long) row["Application_NameId"]));
+
             return dbDT;
         }
 
-        // Returns only the TableRelations, nothing else
-        internal async Task<DataTable> GetTableRelationsFromSharepoint(string appId, long dBId, string Connection_Type, string[] fieldList, string[] PrimaryKey)
-        {
-            string selectString = "$select=Connection_Type eq '" + Connection_Type + "'";
-            string filterString = (dBId > 0) ? "$filter=Database_NameId eq '" + dBId.ToString() + "'" : "";
 
-            for (int i = 0; i < fieldList.Length; i++)
-                selectString = selectString + (i > 0 ? "," : "") + (fieldList[i]);
-
-            DataTable dataTable = await retrieveDataTable(SPRepository + "/_api/lists/getbytitle('Relations')/items?" + selectString + "&" + filterString, 0, PrimaryKey);
-            dataTable.Columns["Title"].ColumnName = "Relation_Name";
-
-            if (dataTable is null) return null;
-
-            return dataTable;
-        }
-
-        internal async Task<DataTable> GetTablesFromSharepoint(string appId, long dBId, string[] fieldList, string[] PrimaryKey)
+        internal async Task<DataTable> GetTablesFromSharepoint(long dBId)//, string[] fieldList)
         {
             // Retrieve the parent list (Databases)
-            DataTable dtDb = _dtDatabases;
-            if (dtDb is null) dtDb = await GetDBsFromSharepoint("", new string[] { }, new string[] { "Id" });
-            _dtDatabases = dtDb; 
+            DataTable dtDb = repoData.Databases;
+            if (dtDb is null) dtDb = await GetDBsFromSharepoint( 0);
+            repoData.Databases = dtDb;
 
-            string selectString = (fieldList.Length > 0) ? "$select=" : "";
             string filterString = (dBId > 0) ? "$filter=Database_NameId eq '" + dBId.ToString() + "'" : "";
 
-            for (int i = 0; i < fieldList.Length; i++)
-                selectString = selectString + (i > 0 ? "," : "") + (fieldList[i]);
-
-            DataTable dataTable = await retrieveDataTable(SPRepository + "/_api/lists/getbytitle('Tables')/items?" + selectString + "&" + filterString, 0, PrimaryKey);
+            DataTable dataTable = await retrieveDataTable(SPRepository + "/_api/lists/getbytitle('Tables')/items?" + filterString, 0, new string[] { "ID" });
             if (dataTable is null) return null;
 
             // Use Linq to add DB and Application fields to each record
+            dataTable.Columns["Title"].ColumnName = "Full_Table_Name";
             dataTable.Columns.Add("Database_Name", Type.GetType("System.String"));
             dataTable.Columns.Add("Application_NameId", Type.GetType("System.Int64"));
             dataTable.Columns.Add("Application_Name", Type.GetType("System.String"));
@@ -625,57 +672,60 @@ namespace ICAS_Architect
         }
 
 
+        internal async Task<DataTable> GetColumnsFromSharepoint(long dbID, long tableID = 0)
+         {
+            int j = 0;
+            string filter = "";
+            DataTable dt = null, dtColumn = null;
 
-        internal DataTable GetColumnsFromSharepointWrapper(long TableOneID)
-        {
-            // if the table exists locally, return the data table
-            if (_dtColumns != null)
-                if (_dtColumns.Select("Table_NameId=" + TableOneID.ToString()).Length > 0) 
-                    return _dtColumns;
+            // pull all tables from this particular database into our DataTable
+            if (repoData.Tables == null)
+                repoData.Tables = await GetTablesFromSharepoint(dbID);
+            else if (repoData.Tables.Select("Database_NameId=" + dbID).Length == 0)
+            {   // Otherwise we will pull all tables in the database in.
+                dt = await GetTablesFromSharepoint(dbID);
+                if (dt == null) return null;
+                repoData.Tables.Merge(dt, true, MissingSchemaAction.Ignore);
+            }
 
-            // Otherwise look up the table and add it to the local cache
-            DataTable tbl = Task.Run(async () => await GetColumnsFromSharepoint(0, TableOneID, new string[] {  }, new string[] { "Table_Name", "Title" })).Result;
-            if (tbl != null)
-                if (_dtColumns is null)
-                    _dtColumns = tbl;
-                else
-                    _dtColumns.Merge(tbl);
+            if (tableID > 0)
+            {
+                // if we are asking for a specific table, this is all we have to do
+                dtColumn = await retrieveDataTable(SPRepository + "/_api/lists/getbytitle('Columns')/items?" + "&$filter=Table_NameId eq " + tableID + "&$orderby=Title", 0, new string[] { "ID" });
+            }
+            else
+            {   // otherwise we get all columns from within the database by cycling through the rows.
+                DataRow[] dbTables = repoData.Tables.Select("Database_NameId=" + dbID);
+                for (int i = 0; i < dbTables.Length; i++)//  DataRow row in _dtTables.Rows)
+                {
+                    DataRow row = dbTables[i];
+                    filter += " Table_NameId eq " + row["ID"] + " or "; // add the tableID to the filter
 
-            return _dtColumns;
-        }
+                    if (j++ >= 19 | i >= dbTables.Length-1) // we retrieve 20 sets of columns at a time for speed.
+                    {
+                        filter = "&$filter=" + filter.Substring(0, filter.Length - 3);
+                        try
+                        {
+                            dt = await retrieveDataTable(SPRepository + "/_api/lists/getbytitle('Columns')/items?" + filter, 0, new string[] { "ID" });
+                            if (dtColumn == null) dtColumn = dt;
+                            else if (dt != null) dtColumn.Merge(dt, true, MissingSchemaAction.Ignore);
+                        }
+                        catch (Exception e) { Debug.WriteLine(e.Message); }
+                        filter = "";
+                        j = 0;
+                    }
+                }
+            }
 
-
-        // Get all columns by DB is not working yet. For our huge initial uploads it needs fixing.
-        internal async Task<DataTable> GetColumnsFromSharepoint(long dbID, long tableID, string[] fieldList, string[] PrimaryKey)
-        {
-            // Retrieve the parent list, but only if needed (Tables)
-            if(_dtTables == null)
-                _dtTables = await GetTablesFromSharepoint("", dbID ,  new string[] { }, new string[] { "Database_NameId", "Title" });
-            else if (_dtTables.Select("ID=" + tableID).Length == 0)
-                _dtTables.Merge(await GetTablesFromSharepoint("", dbID, new string[] { }, new string[] { "Database_NameId", "Title" }));
-
-            string selectString = (fieldList.Length > 0) ? "$select=" : "";
-            for (int i = 0; i < fieldList.Length; i++)
-                selectString += (i > 0 ? "," : "") + (fieldList[i]);
-
-            DataTable dtColumn = null;
+            // Use Linq to add Table and DB parent fields to each record
             try
             {
-                if (tableID != 0)
-                     dtColumn = await retrieveDataTable(SPRepository + "/_api/lists/getbytitle('Columns')/items?" + selectString + "&$filter=Table_NameId eq '" + tableID + "'&$orderby=Title", 0, PrimaryKey);
-            }catch(Exception e)
-            { Console.WriteLine(e.Message); }
-            
-            if (dtColumn is null) return null;
-
-            try
-            {
-                // Use Linq to add Table and DB fields to each record
+                if (dtColumn == null) return null;
                 dtColumn.Columns["Title"].ColumnName = "Column_Name";
                 dtColumn.Columns.Add("Table_Name", Type.GetType("System.String"));
                 dtColumn.Columns.Add("Database_NameId", Type.GetType("System.Int64"));
                 dtColumn.Columns.Add("Database_Name", Type.GetType("System.String"));
-                dtColumn.AsEnumerable().Join(_dtTables.AsEnumerable(), _dtmater => Convert.ToString(_dtmater["Table_NameId"]), _dtchild => Convert.ToString(_dtchild["id"]),
+                dtColumn.AsEnumerable().Join(repoData.Tables.AsEnumerable(), _dtmater => Convert.ToString(_dtmater["Table_NameId"]), _dtchild => Convert.ToString(_dtchild["id"]),
                     (_dtmater, _dtchild) => new { _dtmater, _dtchild }).ToList().ForEach(
                         o =>
                         {
@@ -685,125 +735,100 @@ namespace ICAS_Architect
                         }
                     );
             }
-            catch (Exception e) { Console.WriteLine(e.Message); }
+            catch (Exception e) { Debug.WriteLine(e.Message); }
 
             return dtColumn;
         }
 
 
-        internal async Task<DataTable> GetColumnsFromSharepointByDB(long dbID)
+        internal async Task<DataTable> GetRelationsFromSharepointByDB(long dbID, string Relation_Type = "All", bool ManyDirection = false)
         {
-            DataTable dt = null, dataTable = null;
-            // Retrieve the parent list (Tables)
-            if (_dtTables == null)
-                _dtTables = await GetTablesFromSharepoint("", dbID, new string[] { }, new string[] { "Database_NameId", "Title" });
-            else if (_dtTables.Select("Database_NameId=" + dbID).Length == 0)
-            {
-                dt = await GetTablesFromSharepoint("", dbID, new string[] { }, new string[] { "Database_NameId", "Title" });
-                if (dt != null)
-                    _dtTables.Merge(dt);
-            }
-            if (_dtTables == null) return null;
+            DataTable dt = null, dtRelation = null;
+            int j = 0; 
+            string filter = "";
 
-            foreach (DataRow row in _dtTables.Rows)
+            // pull all tables from this particular database into our DataTable
+            if (repoData.Tables == null)
+                repoData.Tables = await GetTablesFromSharepoint(dbID);
+            else if (repoData.Tables.Select("Database_NameId=" + dbID).Length == 0)
+            {  
+                dt = await GetTablesFromSharepoint(dbID);
+                if (dt == null) return null;
+                repoData.Tables.Merge(dt, true, MissingSchemaAction.Ignore);
+            }
+            DataRow[] dbTables = repoData.Tables.Select("Database_NameId=" + dbID);
+
+            for (int i = 0; i < dbTables.Length; i++)//  DataRow row in _dtTables.Rows)
             {
-                if (dataTable == null)
-                    dataTable = await GetColumnsFromSharepoint(0, (long)row["ID"], new string[] { }, new string[] { "Id", "Title, Table_NameId" });
-                else if (dataTable.Select("Table_NameId=" + row["ID"]).Length == 0)
+                DataRow row = dbTables[i];
+                filter = filter + (ManyDirection ? "Table_ManyId eq " : "Table_OneId eq ") + row["ID"] + " or ";
+
+                if (j++ >= 19 | i >= dbTables.Length-1) // retrieve data for 20 tables at a time
+                {
+                    if( Relation_Type == "All")
+                        filter = "&$filter=(" + filter.Substring(0, filter.Length - 3) + ") ";
+                    else
+                        filter = "&$filter=(" +  filter.Substring(0, filter.Length - 3) + ") and (Relation_Type eq '" + Relation_Type + "')";
                     try
                     {
-                        dt = await GetColumnsFromSharepoint(0, (long)row["ID"], new string[] { }, new string[] { "Id", "Title, Table_NameId" });
-                        if(dt != null)
-                            dataTable.Merge(dt, true, MissingSchemaAction.Ignore);
-                    } catch (Exception e) {    Console.WriteLine(e.Message); }
-            }
-            return dataTable;
-        }
-
-
-        internal async Task<DataTable> GetRelationsFromSharepointByDB(long dbID, bool ManyDirection = false)
-        {
-            // Retrieve the parent list (Tables)
-            if (_dtTables == null)
-                _dtTables = await GetTablesFromSharepoint("", dbID, new string[] { }, new string[] { "Database_NameId", "Title" });
-            else if (_dtTables.Select("Database_NameId=" + dbID).Length == 0)
-                _dtTables.Merge(await GetTablesFromSharepoint("", dbID, new string[] { }, new string[] { "Database_NameId", "Title" }));
-
-            DataTable dtRelations = null;
-            foreach(DataRow row in _dtTables.Rows)
-            {
-                if(dtRelations == null)
-                    dtRelations = await GetRelationsFromSharepoint(0, (long)row["ID"], new string[] { }, new string[] { }, ManyDirection);
-                else if (dtRelations.Select((ManyDirection ? "Table_ManyId=" : "Table_OneId") + row["ID"]).Length == 0)
-                    try
-                    {
-                        DataTable dt = await GetRelationsFromSharepoint(0, (long)row["ID"], new string[] { }, new string[] { }, ManyDirection);
-                        if (dt != null)
-                            dtRelations.Merge(dt, true, MissingSchemaAction.Ignore);
+                        dt = await retrieveDataTable(SPRepository + "/_api/lists/getbytitle('Relations')/items?" + filter, 0, new string[] { });
+                        if (dtRelation == null)    dtRelation = dt;
+                        else if (dt != null)       dtRelation.Merge(dt, true, MissingSchemaAction.Ignore);
                     }
-                    catch (Exception e) { Console.WriteLine(e.Message); }
+                    catch (Exception e) { Debug.WriteLine(e.Message); }
+
+                    filter = "";
+                    j = 0;
+                }
             }
-            return dtRelations;
-        }
-
-
-        // Get all columns by DB is not working yet. For our huge initial uploads it needs fixing.
-        internal async Task<DataTable> GetRelationsFromSharepoint(long dbID, long tableID, string[] fieldList, string[] PrimaryKey, bool ManyDirection)
-        {
-            // Retrieve the parent list (Tables)
-            if (_dtTables == null)
-                _dtTables = await GetTablesFromSharepoint("", dbID, new string[] { }, new string[] { "Database_NameId", "Title" });
-            else if (_dtTables.Select("ID=" + tableID).Length == 0)
-                _dtTables.Merge(await GetTablesFromSharepoint("", dbID, new string[] { }, new string[] { "Database_NameId", "Title" }));
-
-            string selectString = (fieldList.Length > 0) ? "$select=" : "";
-            for (int i = 0; i < fieldList.Length; i++)
-                selectString += (i > 0 ? "," : "") + (fieldList[i]);
-
-            DataTable dtRelation = null;
             try
             {
-                if (tableID != 0)
-                    if(ManyDirection)
-                        dtRelation = await retrieveDataTable(SPRepository + "/_api/lists/getbytitle('Relations')/items?" + selectString + "&$filter=Table_ManyId eq '" + tableID + "'&$orderby=Title", 0, PrimaryKey);
-                    else    
-                        dtRelation = await retrieveDataTable(SPRepository + "/_api/lists/getbytitle('Relations')/items?" + selectString + "&$filter=Table_OneId eq '" + tableID + "'&$orderby=Title", 0, PrimaryKey);
-            }
-            catch (Exception e)
-            { Console.WriteLine(e.Message); }
-
-            if (dtRelation is null) return null;
-
-            try
-            {
+                if (dtRelation == null) return null;
                 // Use Linq to add Table and DB fields to each record
+//                dtRelation.Columns["Title"].ColumnName = "Relation_Name";
                 dtRelation.Columns.Add("Column_One", typeof(string));
-                dtRelation.Columns.Add("Table_OneId", typeof(long));
                 dtRelation.Columns.Add("Table_One", typeof(string));
-                dtRelation.Columns["Title"].ColumnName = "Relation_Name";
+                dtRelation.Columns.Add("Database_One", typeof(string));
                 dtRelation.Columns.Add("Column_Many", typeof(string));
-                dtRelation.Columns.Add("Table_ManyId", typeof(long));
                 dtRelation.Columns.Add("Table_Many", typeof(string));
-                dtRelation.AsEnumerable().Join(_dtTables.AsEnumerable(), _dtmater => Convert.ToString(_dtmater["Table_NameId"]), _dtchild => Convert.ToString(_dtchild["id"]),
+                dtRelation.Columns.Add("Database_Many", typeof(string));
+
+
+                dtRelation.AsEnumerable().Join(repoData.Tables.AsEnumerable(), _dtmater => Convert.ToString(_dtmater["Table_OneId"]), _dtchild => Convert.ToString(_dtchild["ID"]),
                     (_dtmater, _dtchild) => new { _dtmater, _dtchild }).ToList().ForEach(
-                        o => {
-                            o._dtmater.SetField("Table_Name", o._dtchild["Table_Name"].ToString());
-                            o._dtmater.SetField("Database_NameId", (long)o._dtchild["Database_NameId"]);
-                            o._dtmater.SetField("Database_Name", o._dtchild["Database_Name"].ToString());
-                        }
+                        o => { o._dtmater.SetField("Table_One", o._dtchild["Table_Name"].ToString()); o._dtmater.SetField("Database_One", o._dtchild["Database_Name"]); }
                     );
+
+                dtRelation.AsEnumerable().Join(repoData.Tables.AsEnumerable(), _dtmater => Convert.ToString(_dtmater["Table_ManyId"]), _dtchild => Convert.ToString(_dtchild["id"]),
+                    (_dtmater, _dtchild) => new { _dtmater, _dtchild }).ToList().ForEach(
+                        o => { o._dtmater.SetField("Table_Many", o._dtchild["Table_Name"].ToString()); o._dtmater.SetField("Database_Many", o._dtchild["Database_Name"]); }
+                    );
+
+                if(repoData.Columns != null)
+                dtRelation.AsEnumerable().Join(repoData.Columns.AsEnumerable(), _dtmater => Convert.ToString(_dtmater["Column_OneId"]), _dtchild => Convert.ToString(_dtchild["id"]),
+                    (_dtmater, _dtchild) => new { _dtmater, _dtchild }).ToList().ForEach(
+                        o => { o._dtmater.SetField("Column_One", o._dtchild["Column_Name"].ToString()); }
+                    );
+
+                if(repoData.Columns != null)
+                dtRelation.AsEnumerable().Join(repoData.Columns.AsEnumerable(), _dtmater => Convert.ToString(_dtmater["Column_ManyId"]), _dtchild => Convert.ToString(_dtchild["id"]),
+                    (_dtmater, _dtchild) => new { _dtmater, _dtchild }).ToList().ForEach(
+                        o => { o._dtmater.SetField("Column_Many", o._dtchild["Column_Name"].ToString()); }
+                    );
+
             }
-            catch (Exception e) { Console.WriteLine(e.Message); }
+            catch (Exception e) { Debug.WriteLine(e.Message); }
 
             return dtRelation;
         }
 
 
 
-        // wrapper that ensures that we can retrieve as many rows as we like.
+
+        // wrapper that ensures that we can retrieve as many rows as we like, given Sharepoint's 5000 record limit
         internal async Task<DataTable> retrieveDataTable(string appUrl, int iteration, string[] PrimaryKey)
         {
-            const int iterSize = 1000;
+            const int iterSize = 5000;
             var client = httpDownloadClient.client;
             client.DefaultRequestHeaders.Accept.Clear();
             System.Net.Http.Headers.MediaTypeWithQualityHeaderValue acceptHeader = System.Net.Http.Headers.MediaTypeWithQualityHeaderValue.Parse("application/json;odata.metadata=none");
@@ -817,7 +842,7 @@ namespace ICAS_Architect
             try { response.EnsureSuccessStatusCode(); }
             catch (Exception e)
             {
-                Console.WriteLine(e.Message + "\n" + response);
+                Debug.WriteLine(e.Message + "\n" + response);
                 return null;
             }
 
@@ -834,14 +859,18 @@ namespace ICAS_Architect
                 if (tmpDT != null)
                     dataTable.Merge(tmpDT);
             }
-
-            var keys = new DataColumn[PrimaryKey.Length];
-            for (int i = 0; i < PrimaryKey.Length; i++)
-                keys[i] = dataTable.Columns[PrimaryKey[i]];
-            // I may add the Primary Key field back in later.   dataTable.PrimaryKey = keys;
-
+            if (PrimaryKey != null)
+            {
+                var keys = new DataColumn[PrimaryKey.Length];
+                for (int i = 0; i < PrimaryKey.Length; i++)
+                    keys[i] = dataTable.Columns[PrimaryKey[i]];
+                // I may add the Primary Key field back in later.   dataTable.PrimaryKey = keys;
+            }
             return dataTable;
         }
+
+
+
 
 
         internal string GenerateHash(string entityName)
@@ -861,21 +890,22 @@ namespace ICAS_Architect
 
         
         
-        internal bool isValidColumn(string columnList, string columnName)
+        internal bool isSharepointColumn(string columnList, string columnName)
         {
             // Some entities (such as SystemUser entity) are not useful for ER diagram. Skip those noisy not useful entities for visualization.
             return (columnList.Contains($",{columnName.ToLower()},"));
         }
 
 
-        internal async Task<string> GetSharePointListFields(string listName)
+        internal async Task<string> GetSharePointListFields(string listName, string nameType = "User")
         {
             var client = httpDownloadClient.client;
             client.DefaultRequestHeaders.Accept.Clear();
             System.Net.Http.Headers.MediaTypeWithQualityHeaderValue acceptHeader = System.Net.Http.Headers.MediaTypeWithQualityHeaderValue.Parse("application/json;odata.metadata=none");
             client.DefaultRequestHeaders.Accept.Add(acceptHeader);
 
-            var response = await client.GetAsync(SPRepository + "/_api/lists/getbytitle('" + listName + "')//fields?$filter=Hidden eq false and ReadOnlyField eq false ");
+            var response = await client.GetAsync(SPRepository + "/_api/lists/getbytitle('" + listName + "')//fields?$filter=Hidden eq false " + (nameType == "User" ? "and ReadOnlyField eq false" : ""));
+
             var responseText = await response.Content.ReadAsStringAsync();
             try { response.EnsureSuccessStatusCode(); }
             catch (Exception e)
@@ -887,13 +917,20 @@ namespace ICAS_Architect
 
             string columnList = ",";
             for (int i = 0; i < values.Length; i++)
-                if (values[i].SelectToken("Title").ToString() != "ID")
-                    columnList = columnList + values[i].SelectToken("Title").ToString().ToLower() + ",";
+                    if(nameType=="User")
+                        if (values[i].SelectToken("InternalName").ToString() != "Title") // ignore the Title as we have renamed it in the UI
+                            if (values[i].SelectToken("TypeAsString").ToString() != "Lookup") // ignore lookup fields as we have to do extra work
+            if (values[i].SelectToken("Title").ToString() != "ID") // ignore the ID field
+                                columnList = columnList + values[i].SelectToken("Title").ToString().ToLower() + ",";
+                    else
+                        columnList = columnList + values[i].SelectToken("InternalName").ToString() + ",";
 
             return columnList;
         }
 
 
+        // Because Visio.DataRecordsets are not Linq compliant, we have to convert them into an XML stream
+        // to move them into a more useful datatable structure.
         internal DataTable convertDataRecordsetToDataTable(Visio.DataRecordset DR)
         {
             // convert string to stream
@@ -905,6 +942,187 @@ namespace ICAS_Architect
             DataTable dataTable = dataSet.Tables["row"];
 
             return dataTable;
+        }
+
+
+        internal RecordStatus RowHasChanged(DataRow editRow, DataTable dataTable)
+        {
+            var repoRow = dataTable.Select("ID=" + editRow["ID"].ToString());
+            if (repoRow.Length == 0) return RecordStatus.DoesNotExist;
+
+            // compare the edited row with the original row. If Sharepoint column doesn't exist, ignore it as
+            // that column won't be uploaded anyway.
+            for (int i = 0; i<editRow.ItemArray.Length; i++)
+            {
+                string colName = editRow.Table.Columns[i].ColumnName;
+                if (dtDataFieldExists(dataTable, colName))
+                    if (editRow[i] != repoRow[0][colName])
+                        return RecordStatus.ExistsAndHasChanged;
+            }
+            return RecordStatus.ExistsAndHasNotChanged;
+        }
+
+        internal bool FieldHasChanged(object editField, object repoField)
+        {
+            if (repoField == null)
+                if (editField == DBNull.Value)
+                    return false;
+                else
+                    return true;
+            if (editField.ToString() == repoField.ToString())
+                return false;
+            else
+                return true;
+        }
+
+
+        /* SaveApplicationToSharepoint requires the following case-sensitive fieldnames for an upload:
+* ID (null for new ones), Database_Name, Application_NameId, Application_Name
+*/
+        internal void saveApplicationToSharepoint(DataTable dtApp, bool TestForExistence = false)
+        {
+            GetClientContext();
+            var targetList = gclientContext.Web.Lists.GetByTitle("Applications");
+            string sharepointTableFields = Task.Run(async () => await GetSharePointListFields("Applications")).Result;
+            int j = 0;
+            ListItem oItem = null;
+            DataRow repoRow = null;
+
+            DataTable repoTable = repoData.Applications;
+
+            if (dtApp is null) return; // nothing to save
+            if (repoTable is null) repoTable = Task.Run(async () => await GetApplicationsFromSharepoint("", new string[] { })).Result;
+
+            Utilites.ScreenEvents.DisplayVisioStatusPersistent("Uploading Tables: " + j + " of " + dtApp.Rows.Count, "ScopeStart");
+
+            foreach (DataRow row in dtApp.Rows)
+            {
+                j++;
+                if (row["Edit_Status"].ToString() != "New") continue;
+
+                // Choose whether to add or edit the data row
+                if (row["ID"] == DBNull.Value)
+                {   // verify and choose add
+                    if (row["Application_Name"].ToString() == "") continue;
+                    if (repoTable != null)
+                        if(repoTable.Select("Application_Name = '" + row["Application_Name"].ToString() + "'").Length > 0) continue;  // application exists, skip it
+                    oItem = targetList.AddItem(new ListItemCreationInformation());
+                    repoRow = null;
+
+                    oItem["Title"] = row["Application_Name"].ToString();
+                }
+                else
+                {   // we are editing and the record doesn't exist or has not changed, skip
+                    if (RowHasChanged(row, repoData.Tables) != RecordStatus.ExistsAndHasChanged) continue;
+                    repoRow = repoTable.Select("ID=" + row["ID"].ToString())[0];
+                    // Continue, as the record exists and has changed.
+                    oItem = targetList.GetItemById((int)row["ID"]);
+                }
+
+                // Copy all columns from that are Sharepoint-valid 
+                foreach (DataColumn column in dtApp.Columns)
+                {   // replace any Visio- or Sharepoint-styled strings and check to see if it's still valid
+                    string fieldName = column.ColumnName.Replace("_VisDM_", "").Replace(" ", "_x0020_");
+                    if (isSharepointColumn(sharepointTableFields, fieldName))
+                        if (repoRow == null)
+                        {
+                            if (row[column.ColumnName] != DBNull.Value)
+                                oItem[fieldName] = row[column.ColumnName].ToString();
+                        }
+                        else if (FieldHasChanged(row[column.ColumnName], repoRow[column.ColumnName]))
+                            oItem[fieldName] = row[column.ColumnName].ToString();
+                    //if (isSharepointColumn(sharepointTableFields, fieldName))
+                    //    if (FieldHasChanged(row[column.ColumnName], dtDataFieldExists(repoTable, column.ColumnName) ? repoRow[column.ColumnName] : DBNull.Value))
+                    //        oItem[fieldName] = row[column.ColumnName].ToString();
+                }
+
+                // update sharepoint
+                oItem.Update();
+                row["Edit_Status"] = "Uploading";
+
+                Utilites.ScreenEvents.DisplayVisioStatusPersistent("Uploading Application : " + j + " of " + dtApp.Rows.Count);
+                gclientContext.ExecuteQuery();
+            }
+            Utilites.ScreenEvents.DisplayVisioStatusPersistent("Uploading " + j + " of " + dtApp.Rows.Count, "ScopeEnd");
+        }
+
+
+        /* SaveDatabaseToSharepoint requires the following case-sensitive fieldnames for an upload:
+    * ID (null for new ones), Database_Name, Application_NameId, Application_Name
+    */
+        internal void saveDBToSharepoint(DataTable dbTable, bool TestForExistence = false)
+        {
+            var targetList = gclientContext.Web.Lists.GetByTitle("Databases");
+            if (repoData.Databases == null) repoData.Databases = Task.Run(async () => await GetDBsFromSharepoint(0)).Result;
+            if (repoData.Applications == null) repoData.Applications = Task.Run(async () => await GetApplicationsFromSharepoint("", new string[] { })).Result;
+
+            string sharepointTableFields = Task.Run(async () => await GetSharePointListFields("Databases")).Result;
+            int i = 0, j = 0;
+            ListItem oItem = null;
+            DataRow repoRow = null;
+            DataTable repoTable = repoData.Databases;
+
+            if (dbTable is null) return; // nothing to save
+            if (repoTable is null) repoTable = Task.Run(async () => await GetDBsFromSharepoint(0)).Result;
+
+            Utilites.ScreenEvents.DisplayVisioStatusPersistent("Uploading Tables: " + j + " of " + dbTable.Rows.Count, "ScopeStart");
+
+            foreach (DataRow row in dbTable.Rows)
+            {
+                j++;
+                if (row["Edit_Status"].ToString() != "New") continue;
+
+                if (row["ID"] == DBNull.Value)
+                {   // Add new record
+                    if (row["Database_Name"].ToString() == "") continue;
+                    if (repoTable != null)
+                        if (repoTable.Select("Database_Name = '" + row["Database_Name"].ToString() + "'").Length > 0) continue;  // application exists, skip it
+                    repoRow = null;
+                    oItem = targetList.AddItem(new ListItemCreationInformation());
+
+                    oItem["Title"] = row["Database_Name"].ToString();
+                    FieldLookupValue fk = new FieldLookupValue();
+                    if (row["Application_NameId"] == DBNull.Value)
+                        fk.LookupId = Convert.ToInt32( repoData.Applications.Select("Application_Name='" + row["Application_Name"] + "'")[0]["ID"]);
+                    else
+                        fk.LookupId = Convert.ToInt32(row["Application_NameId"]);
+                    oItem["Application_Name"] = fk;// row["Application_Name"].ToString();
+                }
+                else 
+                {   // edit record
+                    if (RowHasChanged(row, repoTable) != RecordStatus.ExistsAndHasChanged) continue; // nothing to change
+                    repoRow = repoTable.Select("ID=" + row["ID"].ToString())[0];
+                    oItem = targetList.GetItemById((int)row["ID"]);
+                }
+
+                // Copy all columns from that are Sharepoint-valid 
+                foreach (DataColumn column in dbTable.Columns)
+                {   // replace any Visio- or Sharepoint-styled strings and check to see if it's still valid
+                    string fieldName = column.ColumnName.Replace("_VisDM_", "").Replace(" ", "_x0020_");
+                    if (fieldName == "Database_Name") continue;
+                    if (isSharepointColumn(sharepointTableFields, fieldName))
+                        if (repoRow == null)
+                        {
+                            if (row[column.ColumnName] != DBNull.Value)
+                                oItem[fieldName] = row[column.ColumnName].ToString();
+                        }
+                        else if (FieldHasChanged(row[column.ColumnName], repoRow[column.ColumnName]))
+                            oItem[fieldName] = row[column.ColumnName].ToString();
+                }
+
+                // update sharepoint
+                oItem.Update();
+                row["Edit_Status"] = "Uploading";
+
+                if (i++ >= 0) { // write every line individually
+                    Utilites.ScreenEvents.DisplayVisioStatusPersistent("Uploading Database: " + j + " of " + dbTable.Rows.Count);
+                    gclientContext.ExecuteQuery();
+                    i = 0;
+                }
+            }
+            if (i > 0)
+                gclientContext.ExecuteQuery();
+            Utilites.ScreenEvents.DisplayVisioStatusPersistent("Uploading " + j + " of " + dbTable.Rows.Count, "ScopeEnd");
         }
 
 
@@ -920,59 +1138,83 @@ namespace ICAS_Architect
             string sharepointTableFields = Task.Run(async () => await GetSharePointListFields("Tables")).Result;
             int i = 0, j = 0;
             ListItem oItem = null;
+            DataRow repoRow = null;
 
-            // Get Database Info to reference
-            if (_dtDatabases is null) 
-                _dtDatabases = Task.Run(async () => await GetDBsFromSharepoint("", new string[] { }, new string[] { "Title" })).Result;
+            DataTable repoTable = repoData.Tables;
+
+            if (dTable is null) return; // nothing to save
+            if (repoData.Databases is null) repoData.Databases = Task.Run(async () => await GetDBsFromSharepoint(0)).Result;
+
+            Utilites.ScreenEvents.DisplayVisioStatusPersistent("Uploading Tables: " + j + " of " + dTable.Rows.Count, "ScopeStart");
 
             foreach (DataRow row in dTable.Rows)
             {
                 j++;
                 if (row["Edit_Status"].ToString() != "New") continue;
 
-                // Add if there's not ID, otherwise edit.
-                if (row.Field<long?>("ID") == null) 
-                    oItem = targetList.AddItem(new ListItemCreationInformation());
-                else
-                    oItem = targetList.GetItemById(row.Field<int>("ID"));
+                // this line is just in case there is no repository data information
+                if (repoData.Tables == null)
+                {
+                    var dRow = repoData.Databases.Select("Database_Name='" + row["Database_Name"] + "'");
+                    repoData.Tables = Task.Run(async () => await GetTablesFromSharepoint((long)dRow[0]["Id"])).Result;
+                }
 
-                // Read all Sharepoint-ok'd columns
+                // Choose whether to add or edit the data row
+                if (row["ID"] == DBNull.Value)
+                {   // verify and choose add
+                    if (row["Table_Name"].ToString() == "") continue;
+                    if (repoData.Tables != null)
+                        if (repoData.Tables.Select("Table_Name='" + row["Table_Name"] + "' and Database_Name = '" + row["Database_Name"] + "'").Length>0) continue;  // application exists, skip it
+
+                    // Add the GUID
+                    DataRow[] dRow = repoData.Databases.Select("[Database_Name] = '" + row["Database_Name"].ToString() + "'");// +  "' OR ID=" + row["Database_NameId"].ToString());
+                    oItem = targetList.AddItem(new ListItemCreationInformation());
+                    oItem["TableGUID"] = GenerateHash(dRow[0]["Application_Name"].ToString() + "." + dRow[0]["Database_Name"].ToString() + "." + row["Table_Name"].ToString());
+                    repoRow = null;
+
+                    // get the foreign (Database) key
+                    FieldLookupValue fk = new FieldLookupValue();
+                    fk.LookupId = Convert.ToInt32( dRow[0]["Id"]);
+                    oItem["Database_Name"] = fk;// row["Application_Name"].ToString();
+                }
+                else
+                {   // we are editing and the record doesn't exist or has not changed, skip
+                    if (RowHasChanged(row, repoTable) != RecordStatus.ExistsAndHasChanged) continue;
+                    repoRow = repoTable.Select("ID=" + row["ID"].ToString())[0];
+                    // Continue, as the record exists and has changed.
+                    oItem = targetList.GetItemById(Convert.ToInt32( row["ID"]));
+                }
+
+                // Copy all columns from that are Sharepoint-valid 
                 foreach ( DataColumn column in dTable.Columns)
                 {   // replace any Visio- or Sharepoint-styled strings and check to see if it's still valid
                     string fieldName = column.ColumnName.Replace("_VisDM_", "").Replace(" ", "_x0020_"); 
-                    if (isValidColumn(sharepointTableFields, fieldName))
-                        oItem[fieldName] = row.Field<string>(column.ColumnName);
+                    if (isSharepointColumn(sharepointTableFields, fieldName))
+                        if (repoRow == null)
+                        {
+                            if (row[column.ColumnName] != DBNull.Value)
+                                oItem[fieldName] = row[column.ColumnName].ToString();
+                        }
+                        else if (FieldHasChanged(row[column.ColumnName], repoRow[column.ColumnName]))
+                            oItem[fieldName] = row[column.ColumnName].ToString();
                 }
 
-                if(row.Field<long?>("ID") is null)
-                { // if we haven't added this before, we need to look up the app name and create the GUID
-                    var dbID = row.Field<long>("Database_NameId");
-                    DataRow[] dRow;
-                    if (dbID == 0) // if no DBID was passed in, find it from the database name.
-                        dRow = _dtDatabases.Select("Database_Name = '" + row.Field<string>("Database_Name") + "'");
-                    else
-                        dRow = _dtDatabases.Select("ID='" + dbID + "'");
+                oItem["Title"] = row["Database_Name"].ToString() + "." + row["Table_Name"].ToString(); // Title is "Full_Table_Name
 
-                    //dbID = (long) dRow[0]["Id"];
-                    oItem["Database_Name"] = (long)dRow[0]["Id"]; // This is a sharepoint weirdism. It links to ID rather than dbrow.
-                    oItem["TableGUID"] = GenerateHash(dRow[0].Field<string>("Application_Name") + "." + dRow[0].Field<string>("Database_Name") + "." + row.Field<string>("Table_Name"));
-                }
-
-                oItem["Title"] = row.Field<string>("Database_Name") + "." + row.Field<string>("Table_Name"); // Title is "Full_Table_Name
-                oItem["Table_Name"] = row.Field<string>("Table_Name");
-
+                // update sharepoint
                 oItem.Update();
                 row["Edit_Status"] = "Uploading";
-
+                
                 if (i++ >= 0)
                 {
-                    Utilites.ScreenEvents.DisplayVisioStatus("Uploading " + j + " of " + dTable.Rows.Count);
+                    Utilites.ScreenEvents.DisplayVisioStatusPersistent("Uploading Tables: " + j + " of " + dTable.Rows.Count);
                     gclientContext.ExecuteQuery();
                     i = 0;
                 }
             }
             if (i > 0)
                 gclientContext.ExecuteQuery();
+            Utilites.ScreenEvents.DisplayVisioStatusPersistent("Uploading " + j + " of " + dTable.Rows.Count, "ScopeEnd");
         }
 
 
@@ -985,60 +1227,88 @@ namespace ICAS_Architect
         {
             //try
             //{
-                DataTable tableDataTable = Task.Run(async () => await GetTablesFromSharepoint("", dbID, new string[] { }, new string[] { "Table_Name", "Database_NameId" })).Result;
+            DataTable tableDataTable = null;
+            if (dbID > 0)
+                tableDataTable = Task.Run(async () => await GetTablesFromSharepoint(dbID)).Result;
+            else
+                tableDataTable = repoData.Tables;
+
                 ListItem oItem = null;
 
                 var targetList = gclientContext.Web.Lists.GetByTitle("Columns");
                 string sharepointColumnFields = Task.Run(async () => await GetSharePointListFields("Columns")).Result;
                 int i = 0, j = 0;
+            DataRow repoRow = null;
 
-                foreach (DataRow row in dtColumns.Rows)
-                {
-                    j++;
-                    if (row["Edit_Status"].ToString() != "New") continue;
-                bool AddNew = (row.Field<long?>("ID") == null);
-                    // Add if there's no ID, otherwise edit.
-                    if (AddNew)
-                        oItem = targetList.AddItem(new ListItemCreationInformation());
-                    else
-                        oItem = targetList.GetItemById(row.Field<int>("ID"));
+            // get all columns for this particular database
+            if (repoData.Columns == null & dbID > 0)
+                repoData.Columns = Task.Run(async () => await GetColumnsFromSharepoint(dbID, 0)).Result;
+            DataTable repoTable = repoData.Columns;
 
-                    foreach (DataColumn column in dtColumns.Columns)
-                    {   // replace any Visio- or Sharepoint-styled strings and check to see if it's still valid
-                        string fieldName = column.ColumnName.Replace("_VisDM_", "").Replace(" ", "_x0020_");
-                        if (column.ColumnName == "Column_Name") continue;
-                        if (isValidColumn(sharepointColumnFields, fieldName)) // if the column is not in sharepoint, skip the column
-                            if(!AddNew | row[column.ColumnName].ToString() == "" ) // if we're adding something new and the column is null, skip the column
-                                oItem[fieldName] = row.Field<string>(column.ColumnName);
-                    }
+            Utilites.ScreenEvents.DisplayVisioStatusPersistent("Uploading Columns: " + j + " of " + dtColumns.Rows.Count, "ScopeStart");
+            foreach (DataRow row in dtColumns.Rows)
+            {
+                j++;
+                if (row["Edit_Status"].ToString() != "New") continue;
+                bool AddNew = (row["ID"].ToString() == "");
 
-                    if (row.Field<long?>("ID") == null)
-                    {
-                        var dr = tableDataTable.Select("[Table_Name] = '" + row.Field<string>("Table_Name").ToString() + "'");
-                        if (dr.Length == 0)
-                        { MessageBox.Show("Cannot find table " + row.Field<string>("Table_Name").ToString() + ". \n Skipping insertion of " + row.Field<string>("Column_Name").ToString()); continue; }
-                        var tableName = dr[0]["Table_Name"].ToString();
-                        var dbName = dr[0]["Database_Name"].ToString();
-                        var appName = dr[0]["Application_Name"].ToString();
-                        var tableType = dr[0]["Table_Type"].ToString();
+                var dRow = repoData.Databases.Select("Database_Name='" + row["Database_Name"] + "'");
 
-                        oItem["ColumnGUID"] = GenerateHash(appName + "." + dbName + "." + dr[0]["Table_Name"].ToString() + "." + row.Field<string>("Column_Name"));
-                        //                    oItem["dbTable"] = tableDataTable.Rows.Find(tableName)["Id"];
-                        //I'm going to try to set this with Id again, but sharepoint sems to want to use the title field
-                        oItem["Title"] = row.Field<string>("Column_Name");
-                        oItem["Table_Name"] = dr[0]["ID"].ToString();
-                    }
-                    oItem.Update();
-                    row["Edit_Status"] = "Uploading";
-                    if (i++ >= 49)
-                    {
-                        Utilites.ScreenEvents.DisplayVisioStatus("Uploading Columns: " + j + " of " + dtColumns.Rows.Count);
-                        gclientContext.ExecuteQuery();
-                        i = 0;
-                    }
+                // Add if there's no ID, otherwise edit
+                if (row["ID"] == DBNull.Value)
+                {   // If we are trying to add and the record already exists, skip
+                    if (row["Column_Name"].ToString() == "") continue;
+                    if (repoTable != null)   
+                        if(repoTable.Select("Database_Name='" + row["Database_Name"] + "' and Table_Name='" + row["Table_Name"] + "' and Column_Name='" + row["Column_Name"] + "'").Length > 0) continue;
+                    repoRow = null;
+                    oItem = targetList.AddItem(new ListItemCreationInformation());
+                    
+                    // set our GUID
+                    var dr = tableDataTable.Select("Full_Table_Name = '" + row["Database_Name"] + "." + row["Table_Name"] + "'");
+                    if (dr.Length == 0) { MessageBox.Show("Cannot find table " + row["Table_Name"].ToString() + ". \n Skipping insertion of " + row["Column_Name"].ToString()); continue; }
+                    oItem["ColumnGUID"] = GenerateHash(dr[0]["Application_Name"].ToString() + "." + dr[0]["Database_Name"].ToString() + "." + dr[0]["Table_Name"].ToString() + "." + row["Column_Name"].ToString());
+
+                    // get the foreign (Table) key
+                    FieldLookupValue fk = new FieldLookupValue();
+                    fk.LookupId = Convert.ToInt32(dr[0]["Id"]);
+                    oItem["Table_Name"] = fk;// row["Application_Name"].ToString();
+                    oItem["Title"] = row["Column_Name"].ToString();
                 }
+                else
+                {   // we are editing and the record doesn't exist or has not changed, skip
+                    if (RowHasChanged(row, repoTable) != RecordStatus.ExistsAndHasChanged) continue;
+                    repoRow = repoTable.Select("ID=" + row["ID"].ToString())[0];
+                    // Continue, as the record exists and has changed.
+                    oItem = targetList.GetItemById((int)row["ID"]);
+                }
+
+                // Copy all columns from that are Sharepoint-valid 
+                foreach (DataColumn column in dtColumns.Columns)
+                {   // replace any Visio- or Sharepoint-styled strings and check to see if it's still valid
+                    string fieldName = column.ColumnName.Replace("_VisDM_", "").Replace(" ", "_x0020_");
+                    if (isSharepointColumn(sharepointColumnFields, fieldName))
+                        if (repoRow == null)
+                        {
+                            if (row[column.ColumnName] != DBNull.Value)
+                                oItem[fieldName] = row[column.ColumnName].ToString();
+                        }
+                        else if (FieldHasChanged(row[column.ColumnName], repoRow[column.ColumnName]))
+                            oItem[fieldName] = row[column.ColumnName].ToString();
+                }
+
+                // update sharepoint
+                oItem.Update();
+                row["Edit_Status"] = "Uploading";
+                if (i++ >= 49)
+                {
+                    Utilites.ScreenEvents.DisplayVisioStatusPersistent("Uploading Columns: " + j + " of " + dtColumns.Rows.Count);
+                    gclientContext.ExecuteQuery();
+                    i = 0;
+                }
+            }
                 if (i > 0)
                     gclientContext.ExecuteQuery();
+            Utilites.ScreenEvents.DisplayVisioStatusPersistent("Uploading Columns: " + j + " of " + dtColumns.Rows.Count, "ScopeEnd");
             //}
             //catch(Exception e)
             //{
@@ -1049,24 +1319,27 @@ namespace ICAS_Architect
             return true;
         }
 
-        internal bool getColumnIDFromDatatable(ref long ColumnID, string ColumnName, ref long TableID, string TableName)
+        internal bool getColumnIDFromDatatable(ref long? ColumnID, string ColumnName, ref long? TableID, string TableName)
         {
             // Get the TableID
-            var tableRet = _dtTables.Select("Table_Name='" + TableName.ToString() + "'");
-            TableID = (TableID > 0) ? TableID : (long)tableRet[0]["ID"];
-            long tablePass = TableID; 
+            if (TableID == 0) {
+                var tableRet = repoData.Tables.Select("Table_Name='" + TableName.ToString() + "'");
+                if (tableRet == null) return false; // there is no table by that name
+                TableID = (long)tableRet[0]["ID"];
+            }
+            long tableNonRef = TableID ?? 0; 
 
             if (TableID == 0)                   return false; // If we didn't find the Table above, just return false;
             if (ColumnID > 0 & TableID > 0)     return true; // everything is fine, so we can continue;
-            if (ColumnName == "") return true; // we're not looking for a column
+            if (ColumnName == "")               return true; // we're not looking for a column
 
             // Get the columnID
             if (ColumnID == 0)
             {
-                if (_dtColumns is null) // if _dtColumns is null, let's initialise it just for the sake of it
-                    _dtColumns = Task.Run(async () => await GetColumnsFromSharepoint(0, tablePass, new string[] { "Id", "Title, Table_NameId" }, new string[] { "Table_Name", "Title" })).Result;
+                if (repoData.Columns is null) // if DTData.Columns is null, let's initialise it just for the sake of it
+                    repoData.Columns = Task.Run(async () => await GetColumnsFromSharepoint(0, tableNonRef)).Result;
 
-                var ret = _dtColumns.Select("[Column_Name]='" + ColumnName + "' and [Table_NameId]='" + TableID + "'");
+                var ret = repoData.Columns.Select("[Column_Name]='" + ColumnName + "' and [Table_NameId]='" + TableID + "'");
                 if (ret.Length > 0)
                 {
                     ColumnID = (long)ret[0]["ID"];
@@ -1074,9 +1347,9 @@ namespace ICAS_Architect
                 }
 
                 //If we can't find the ColumnID, let's try importing all columns in that table from Sharepoint
-                   _dtColumns.Merge(Task.Run(async () => await GetColumnsFromSharepoint(0, tablePass, new string[] { "Id", "Title, Table_NameId" }, new string[] { "Table_Name", "Title" })).Result);
+                   repoData.Columns.Merge(Task.Run(async () => await GetColumnsFromSharepoint(0, tableNonRef)).Result);
 
-                    ret = _dtColumns.Select("[Column_Name]='" + ColumnName + "' and [Table_NameId]='" + TableID + "'");
+                    ret = repoData.Columns.Select("[Column_Name]='" + ColumnName + "' and [Table_NameId]='" + TableID + "'");
                     if (ret.Length > 0)
                     {
                         ColumnID = (long)ret[0]["ID"];
@@ -1103,87 +1376,117 @@ namespace ICAS_Architect
                 */
         internal void saveRelationsToSharepoint(DataTable dtRelation, long dbID, long dbManyID, bool TestForExistence = false)
         {
-            DataTable tableDataTable = Task.Run(async () => await GetTablesFromSharepoint("", dbID, new string[] { }, new string[] { "Table_Name", "Database_NameId" })).Result;
-            _dtTables = tableDataTable;
+            DataTable tableDataTable = Task.Run(async () => await GetTablesFromSharepoint(dbID)).Result;
+            repoData.Relations = Task.Run(async () => await GetRelationsFromSharepointByDB((long)tableDataTable.Rows[0]["Database_NameId"])).Result;
             if (dbID != dbManyID)
             {
-                DataTable tbl = Task.Run(async () => await GetTablesFromSharepoint("", dbManyID, new string[] { "Id", "Table_Name" }, new string[] { "Table_Name", "Database_NameId" })).Result;
-                tableDataTable.Merge(tbl);
+                DataTable tbl = Task.Run(async () => await GetTablesFromSharepoint(dbManyID)).Result;
+                tableDataTable.Merge(tbl,true, MissingSchemaAction.Ignore);
+                repoData.Relations = Task.Run(async () => await GetRelationsFromSharepointByDB((long)tbl.Rows[0]["Database_NameId"])).Result;
             }
 
             var targetList = gclientContext.Web.Lists.GetByTitle("Relations");
             string sharepointRelationFields = Task.Run(async () => await GetSharePointListFields("Relations")).Result;
             ListItem oItem = null;
             int i = 0, j = 0;
+            long? colOneID=0, colManyID=0, tabOneID=0, tabManyID=0;
+            DataRow repoRow = null;
 
+            DataTable repoTable = repoData.Relations;
+
+            Utilites.ScreenEvents.DisplayVisioStatusPersistent("Uploading Relations: " + j + " of " + dtRelation.Rows.Count, "ScopeStart");
             foreach (DataRow row in dtRelation.Rows)
             {
                 j++;
                 if (row["Edit_Status"].ToString() == "") continue;
-
-                // Add if there's no ID, otherwise edit.
-                if (row["ID"].ToString() == "") //change to isnull
+                // Add if there's no ID, otherwise edit
+                if ( row["ID"] == DBNull.Value)
+                {   // If we are trying to add and the record already exists, skip
+                    //var repoRow = repoData.Relations.Select("Column_One='" + row["Column_One"] + "'and Column_Many='" + row["Column_Many"] + "' and Table_One_Full='" + row["Database_One"] + "." + row["Table_One"] + "'and Table_Many_Full='" + row["Database_Many"] + "." + row["Table_Many"] + "'");
+                    //if (repoRow.Length > 0) continue; // the item exists and should not be re-uploaded
                     oItem = targetList.AddItem(new ListItemCreationInformation());
+                    repoRow = null;
+                    colOneID = (long?) row["Column_OneId"];
+                    colManyID = (long?)row["Column_ManyId"];
+                    tabOneID = (long?)row["Table_OneId"];
+                    tabManyID = (long?)row["Table_ManyId"];
+                    // assign the column and table IDs
+                    if (!getColumnIDFromDatatable(ref colOneID, row["Column_One"].ToString(), ref tabOneID, row["Table_One"].ToString())) continue;
+                    if (!getColumnIDFromDatatable(ref colManyID, row["Column_Many"].ToString(), ref tabManyID, row["Table_Many"].ToString())) continue;
+                    oItem["Table_One"] = tabOneID;
+                    oItem["Table_Many"] = tabManyID;
+                    if (colOneID > 0) oItem["Column_One"] = colOneID;
+                    if (colManyID > 0) oItem["Column_Many"] = colManyID;
+                }
                 else
-                    oItem = targetList.GetItemById(row["ID"].ToString());
+                {   // we are editing and the record doesn't exist or has not changed, skip
+                    if (RowHasChanged(row, repoTable) != RecordStatus.ExistsAndHasChanged) continue;
+                    repoRow = repoTable.Select("ID=" + row["ID"].ToString())[0];
+                    // Continue, as the record exists and has changed.
+                    oItem = targetList.GetItemById((int)row["ID"]);
+                }
 
                 if(row["Relation_Type"].ToString() == "Foreign Key")
                     if (Globals.ThisAddIn.drawingManager.IsEntityInSkipList(row["Table_One"].ToString()))  continue; //we want to keep skip list columns but remove their relations
 
-                long colOneID = row["Column_OneId"].ToString() == "" ? (long) 0 : (long) row["Column_OneID"];
-                long colManyID = row["Column_ManyID"].ToString() == "" ? 0 : (long) row["Column_ManyID"];
-                long tabOneID = row["Table_OneID"].ToString() == "" ? 0 : (long) row["Table_OneID"];
-                long tabManyID = row["Table_ManyID"].ToString() == "" ? 0 : (long) row["Table_ManyID"];
-                if (! getColumnIDFromDatatable(ref colOneID, row["Column_One"].ToString(), ref tabOneID, row["Table_One"].ToString()) ) continue;
-                if (! getColumnIDFromDatatable(ref colManyID, row["Column_Many"].ToString(), ref tabManyID, row["Table_Many"].ToString()) ) continue;
-
-                if (row["Table_OneId"].ToString() == "")
-                {
-                    var ret = tableDataTable.Select("[Table_Name]='" + row["Table_One"].ToString() + "'");
-                    if (ret.Length == 0) continue;
-                    tabOneID = (long)ret[0]["ID"];
-                }
-                if (row["Table_ManyId"].ToString() == "")
-                {
-                    var ret = tableDataTable.Select("[Table_Name]='" + row["Table_Many"].ToString() + "'");
-                    if (ret.Length == 0) continue;
-                    tabManyID = (long)ret[0]["ID"];
-                }
-
-
+                // Copy all columns from that are Sharepoint-valid 
                 foreach (DataColumn column in dtRelation.Columns)
                 {   // replace any Visio- or Sharepoint-styled strings and check to see if it's still valid
-                    var fieldName = column.ColumnName.ToString().Replace("_VisDM_", "").Replace(" ", "_x0020_");
-                    if (column.ColumnName.EndsWith("Id")) continue;
-                    if (isValidColumn(sharepointRelationFields, fieldName))
-                        oItem[fieldName] = row.Field<string>(column.ColumnName);
+                    string fieldName = column.ColumnName.Replace("_VisDM_", "").Replace(" ", "_x0020_");
+                    if (isSharepointColumn(sharepointRelationFields, fieldName))
+                        if (repoRow == null)
+                        {
+                            if (row[column.ColumnName] != DBNull.Value)
+                                oItem[fieldName] = row[column.ColumnName].ToString();
+                        }
+                        else if (FieldHasChanged(row[column.ColumnName], repoRow[column.ColumnName]))
+                            oItem[fieldName] = row[column.ColumnName].ToString();
                 }
 
-                oItem["Table_One"] = tabOneID;
-                oItem["Table_Many"] = tabManyID;
-                if (colOneID > 0) oItem["Column_One"] = colOneID;
-                if (colManyID > 0) oItem["Column_Many"] = colManyID;
-
+                // update sharepoint
                 oItem.Update();
                 row["Edit_Status"] = "Uploading";
-
-                if (i++ >= 49)
+                if (i++ >= 39)
                 {
-                    Utilites.ScreenEvents.DisplayVisioStatus("Uploading " + j + " of " + dtRelation.Rows.Count);
+                    Utilites.ScreenEvents.DisplayVisioStatus("Uploading Relations: " + j + " of " + dtRelation.Rows.Count);
                     gclientContext.ExecuteQuery();
                     i = 0;
                 }
             }
             if (i > 0)
                 gclientContext.ExecuteQuery();
+            Utilites.ScreenEvents.DisplayVisioStatusPersistent("Uploading Relations: " + j + " of " + dtRelation.Rows.Count, "ScopeEnd");
         }
 
         internal bool dtDataFieldExists(DataTable dt, string fieldName)
-        {
+        {   if (dt == null) return false;
             for (int i = 0; i < dt.Columns.Count; i++)
                 if (dt.Columns[i].ColumnName == fieldName)
                     return true;
             return false;
+        }
+
+        internal DataTable convertDataRecToDataTable(Visio.DataRecordset dr)
+        {
+            if (dr == null) return null;
+
+            int rows = dr.GetDataRowIDs("").Length;
+            int cols = dr.DataColumns.Count;
+            DataTable dataTable = new DataTable();
+
+            for (int col = 0; col <cols; col++)
+                dataTable.Columns.Add(dr.GetRowData(0).GetValue(col).ToString());
+
+
+            for (int row = 1; row <= rows; row++)
+            {
+                DataRow newRow = dataTable.NewRow();
+                for (int col = 0; col < cols; col++)
+                    newRow[col] = dr.GetRowData(row).GetValue(col).ToString();
+
+                dataTable.Rows.Add(newRow);
+            }
+            return dataTable;
         }
 
 
@@ -1191,7 +1494,7 @@ namespace ICAS_Architect
         {
             GetClientContext();
             if (!AssignDataRecordsets()) return;
-            _dtDatabases = Task.Run(async () => await GetDBsFromSharepoint("", new string[] { "Id", "Application_NameId", "Title" }, new string[] { "Title" })).Result;
+            repoData.Databases = Task.Run(async () => await GetDBsFromSharepoint(0)).Result;
             string dbName = "";
             long dbID = 0;
 
@@ -1206,14 +1509,14 @@ namespace ICAS_Architect
             else
             {
                 if (dtDataFieldExists(dtTables, "Database_Name"))
-                    dbName = dtTables.Rows[0].Field<string>("Database_Name");
+                    dbName = dtTables.Rows[0]["Database_Name"].ToString();
                 if (dbName == "") // Only assign it this name if it doesn't already exist - change this to drop-down inputbox
                     dbName = "Dynamics OData";
 
-                var dbRow = _dtDatabases.Select("Database_Name='" + dbName + "'");
+                var dbRow = repoData.Databases.Select("Database_Name='" + dbName + "'");
                 if(dbRow is null)
                     { MessageBox.Show("There is no database by that name."); return;}
-                dbID = dbRow[0].Field<long>("Id");
+                dbID = (long) dbRow[0]["Id"];
 
                 if (!dtDataFieldExists(dtTables, "Database_Name")) dtTables.Columns.Add("Database_Name", typeof(string), "'" + dbName + "'");
                 if (!dtDataFieldExists(dtTables, "Database_NameId")) dtTables.Columns.Add("Database_NameId", typeof(long), "'" + dbID + "'");
@@ -1289,6 +1592,223 @@ namespace ICAS_Architect
             }
             MessageBox.Show("Complete");
         }
+
+        internal void CopySharepointToExcel()
+        {
+            GetClientContext();
+
+            FolderBrowserDialog folderBrowserDialog = new FolderBrowserDialog();
+            if (string.IsNullOrWhiteSpace(folderBrowserDialog.SelectedPath) || !System.IO.Directory.Exists(folderBrowserDialog.SelectedPath))
+                if (DialogResult.OK != folderBrowserDialog.ShowDialog()) return;
+
+            if (!System.IO.Directory.Exists(folderBrowserDialog.SelectedPath))
+            {
+                MessageBox.Show( $"{folderBrowserDialog.SelectedPath} does not exist.");
+                return;
+            }
+
+            Utilites.ScreenEvents.DisplayVisioStatusPersistent("Downloading Repository to Excel", "ScopeStart");
+            int i = 0;
+            repoData.Databases = Task.Run(async () => await (GetDBsFromSharepoint(0))).Result;
+            foreach(DataRow row in repoData.Databases.Rows)
+            {
+                i++;
+                Utilites.ScreenEvents.DisplayVisioStatusPersistent("Retrieving Tables from " + row["Database_Name"].ToString() + "  (" + i + " of " + repoData.Databases.Rows.Count + ")");
+                // get tables, columns, and relations by DatabaseID
+                DataTable tmp = null;
+                tmp = Task.Run(async () => await (GetTablesFromSharepoint((long)row["ID"]))).Result;
+                if (repoData.Tables == null) repoData.Tables = tmp;
+                else if (tmp != null) repoData.Tables.Merge(tmp, true, MissingSchemaAction.Ignore);
+
+                Utilites.ScreenEvents.DisplayVisioStatusPersistent("Retrieving Columns from " + row["Database_Name"].ToString() + "  (" + i + " of " + repoData.Databases.Rows.Count + ")");
+                tmp = Task.Run(async () => await (GetColumnsFromSharepoint((long)row["ID"], 0))).Result;
+                if (repoData.Columns == null) repoData.Columns = tmp;
+                else if (tmp != null) repoData.Columns.Merge(tmp, true, MissingSchemaAction.Ignore);
+
+                Utilites.ScreenEvents.DisplayVisioStatusPersistent("Retrieving Relations from " + row["Database_Name"].ToString() + "  (" + i + " of " + repoData.Databases.Rows.Count + ")");
+                tmp = Task.Run(async () => await (GetRelationsFromSharepointByDB((long) row["ID"],"All", true))).Result;
+                if (repoData.Relations == null) repoData.Relations = tmp;
+                else if (tmp != null) repoData.Relations.Merge(tmp, true, MissingSchemaAction.Ignore);
+            }
+
+
+            Utilites.ScreenEvents.DisplayVisioStatusPersistent("Writing Data to Excel");
+
+            XL.Application xl = new XL.Application();
+            xl.Visible = true;
+            var wb = xl.Workbooks.Add();
+
+            WriteTableToExcel(wb, repoData.Applications, "Applications");
+            WriteTableToExcel(wb, repoData.Databases, "Databases");
+            WriteTableToExcel(wb, repoData.Tables, "Tables");
+            WriteTableToExcel(wb, repoData.Columns, "Columns");
+            WriteTableToExcel(wb, repoData.Relations, "Relations");
+
+            Utilites.ScreenEvents.DisplayVisioStatusPersistent("Complete", "ScopeEnd");
+
+        }
+
+        internal void UploadExceltoSharepoint()
+        {
+            OpenFileDialog openFileDialog = new OpenFileDialog();
+            openFileDialog.Filter = "Excel Files|*.xls;*.xlsx;*.xlsm";
+            DialogResult result = openFileDialog.ShowDialog();
+            if (result != DialogResult.OK) return;
+
+
+            XL.Application xl = new XL.Application();
+            xl.Visible = true;
+            XL.Workbook wb =  xl.Workbooks.Open(openFileDialog.FileName);
+
+            editData = new DTData();
+
+            editData.Applications = ImportAndUpload(wb, "Applications");
+            repoData.Applications = null;
+            saveApplicationToSharepoint(editData.Applications);
+
+            editData.Databases = ImportAndUpload(wb, "Databases");
+            repoData.Applications = null;
+            repoData.Databases = null;
+            saveDBToSharepoint(editData.Databases);
+
+
+            // refresh all Tables and Databases before trying to upload more tables
+            repoData.Databases =  Task.Run(async () => await (GetDBsFromSharepoint(0))).Result;
+            repoData.Tables = null;
+            foreach (DataRow row in repoData.Databases.Rows)
+            {
+                // get tables, columns, and relations by DatabaseID
+                DataTable tmp = null;
+                tmp = Task.Run(async () => await (GetTablesFromSharepoint((long)row["ID"]))).Result;
+                if (repoData.Tables == null) repoData.Tables = tmp;
+                else if (tmp != null) repoData.Tables.Merge(tmp, true, MissingSchemaAction.Ignore);
+            }
+
+            editData.Tables = ImportAndUpload(wb, "Tables");
+            saveTablesToSharepoint(editData.Tables);
+
+            // refresh all Tables and Columns before trying to upload more columns
+            repoData.Tables = null;
+            repoData.Columns = null;
+            foreach (DataRow row in repoData.Databases.Rows)
+            {
+                // get tables, columns, and relations by DatabaseID
+                DataTable tmp = null;
+                tmp = Task.Run(async () => await (GetTablesFromSharepoint((long)row["ID"]))).Result;
+                if (repoData.Tables == null) repoData.Tables = tmp;
+                else if (tmp != null) repoData.Tables.Merge(tmp, true, MissingSchemaAction.Ignore);
+                tmp = Task.Run(async () => await (GetColumnsFromSharepoint((long)row["ID"], 0))).Result;
+                if (repoData.Columns == null) repoData.Columns = tmp;
+                else if (tmp != null) repoData.Columns.Merge(tmp, true, MissingSchemaAction.Ignore);
+            }
+
+            editData.Columns = ImportAndUpload(wb,"Columns");
+            saveColumnsToSharepoint(editData.Columns,0);
+
+            // get all column information for upload
+            repoData.Columns = null;
+            foreach (DataRow row in repoData.Databases.Rows)
+            {
+                // get tables, columns, and relations by DatabaseID
+                DataTable tmp = null;
+                tmp = Task.Run(async () => await (GetColumnsFromSharepoint((long)row["ID"], 0))).Result;
+                if (repoData.Columns == null) repoData.Columns = tmp;
+                else if (tmp != null) repoData.Columns.Merge(tmp, true, MissingSchemaAction.Ignore);
+            }
+
+            editData.Relations = ImportAndUpload(wb,"Relations");
+            repoData.Relations = null;
+            saveRelationsToSharepoint(editData.Relations,0,0);
+        }
+
+
+
+        private DataTable ImportAndUpload(XL.Workbook wb, string SheetName)
+        {
+            XL.Worksheet ws = null;
+            try
+            {
+                ws = wb.Sheets[SheetName];
+            }
+            catch
+            {
+                // it's ok if the sheetname doesn't exist as we may only be uploading one type of entity.
+                Debug.WriteLine(SheetName + " does not exist in workbook " + wb.Name.ToString());
+                return null;
+            }
+
+            ws.Activate();
+            ws.Cells[2][2].Select();
+            XL.Range rng = ws.Application.Selection.CurrentRegion;
+            var MyArray = rng.Value;
+
+            if (MyArray == null) return null;
+
+            int rows = MyArray.GetLength(0);
+            int cols = MyArray.GetLength(1);
+            DataTable dataTable = new DataTable();
+
+            for (int col = 1; col <= cols; col++)
+                dataTable.Columns.Add(MyArray[1,col].ToString());
+            if (!dtDataFieldExists(dataTable, "Edit_Status")) dataTable.Columns.Add("Edit_Status", typeof(string));
+
+
+            for (int row = 2; row <= rows; row++)
+            {
+                DataRow newRow = dataTable.NewRow();
+                for (int col = 2; col <= cols; col++)
+                    if (MyArray[row, col] != null)
+                        newRow[col-1] = MyArray[row, col].ToString();
+
+                newRow["Edit_Status"] = "New";
+                dataTable.Rows.Add(newRow);
+            }
+            return dataTable;
+        }
+
+
+
+        private void WriteTableToExcel(XL.Workbook wb, DataTable dt, string sheetName)
+        {
+            XL.Worksheet ws = wb.Worksheets.Add();
+            ws.Name = sheetName;
+            if (dt == null) return;
+            // Remove the nuisance Sharepoint columns
+            foreach (string s in new string[] {"FileSystemObjectType","ServerRedirectedEmbedUri","ServerRedirectedEmbedUrl","ContentTypeId","ComplianceAssetId","Created","AuthorId","OData__UIVersionString","Attachments", "GUID" })
+                if (dtDataFieldExists(dt, s)) dt.Columns.Remove(s);
+
+            // column headings               
+            int ColumnsCount = dt.Columns.Count;
+            object[] Header = new object[ColumnsCount];
+
+            for (int i = 0; i < ColumnsCount; i++)
+                Header[i] = dt.Columns[i].ColumnName;
+
+            Microsoft.Office.Interop.Excel.Range HeaderRange = ws.get_Range((Microsoft.Office.Interop.Excel.Range)(ws.Cells[1, 1]), (Microsoft.Office.Interop.Excel.Range)(ws.Cells[1, ColumnsCount]));
+            HeaderRange.Value = Header;
+            HeaderRange.Interior.Color = System.Drawing.ColorTranslator.ToOle(System.Drawing.Color.LightGray);
+            HeaderRange.Font.Bold = true;
+
+            // DataCells
+            int RowsCount = dt.Rows.Count;
+            object[,] Cells = new object[RowsCount, ColumnsCount + 1];
+
+            //string lastRow = "";
+            for (int j = 0; j < RowsCount; j++)
+                for (int i = 0; i < dt.Columns.Count; i++)
+                    Cells[j, i] = (dt.Rows[j][i].ToString().StartsWith("=") ? "'" + dt.Rows[j][i] : dt.Rows[j][i]);
+
+            ws.get_Range((Microsoft.Office.Interop.Excel.Range)(ws.Cells[2, 1]), (Microsoft.Office.Interop.Excel.Range)(ws.Cells[RowsCount + 1, ColumnsCount])).Value = Cells;
+            ws.Cells[2][2].Select();
+            wb.Application.ActiveWindow.FreezePanes = true;
+            wb.Application.Selection.AutoFilter();
+
+            //XL.Range sel = xl.Selection;
+            //sel.Subtotal(1, XL.XlConsolidationFunction.xlCount, new int[] { 2, 32 }, true, false, XL.XlSummaryRow.xlSummaryAbove);
+            //ws.Columns["B:B"].EntireColumn.AutoFit();
+
+        }
+
     }
 }
 

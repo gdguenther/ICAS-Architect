@@ -68,11 +68,11 @@ namespace ICAS_Architect
         private void DownloadMetadata()
         {
             if (!CheckUrlTextField()) return;
-            if (string.IsNullOrWhiteSpace(folderBrowserDialog1.SelectedPath) || !Directory.Exists(folderBrowserDialog1.SelectedPath))
+            if (string.IsNullOrWhiteSpace(folderBrowserDialog1.SelectedPath) || !System.IO.Directory.Exists(folderBrowserDialog1.SelectedPath))
             {
                 if (DialogResult.OK != folderBrowserDialog1.ShowDialog()) return;
             }
-            if (!Directory.Exists(folderBrowserDialog1.SelectedPath))
+            if (!System.IO.Directory.Exists(folderBrowserDialog1.SelectedPath))
             {
                 labelStatus.Text = $"{folderBrowserDialog1.SelectedPath} does not exist.";
                 return;

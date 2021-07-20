@@ -116,5 +116,15 @@ namespace ICAS_Architect
             frmDataFlow frm = new frmDataFlow();
             frm.Show();
         }
+
+        private void btnCopySPToExcel_Click(object sender, RibbonControlEventArgs e)
+        {
+            Globals.ThisAddIn.sharepointManager.CopySharepointToExcel();
+        }
+
+        private void btnCopyExceltoSP_Click(object sender, RibbonControlEventArgs e)
+        {
+            Globals.ThisAddIn.sharepointManager.UploadExceltoSharepoint();
+        }
     }
 }
