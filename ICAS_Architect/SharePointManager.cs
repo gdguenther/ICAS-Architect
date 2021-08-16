@@ -1176,6 +1176,7 @@ namespace ICAS_Architect
                     FieldLookupValue fk = new FieldLookupValue();
                     fk.LookupId = Convert.ToInt32( dRow[0]["Id"]);
                     oItem["Database_Name"] = fk;// row["Application_Name"].ToString();
+                    oItem["Title"] = row["Database_Name"].ToString() + "." + row["Table_Name"].ToString(); // Title is "Full_Table_Name
                 }
                 else
                 {   // we are editing and the record doesn't exist or has not changed, skip
@@ -1199,7 +1200,8 @@ namespace ICAS_Architect
                             oItem[fieldName] = row[column.ColumnName].ToString();
                 }
 
-                oItem["Title"] = row["Database_Name"].ToString() + "." + row["Table_Name"].ToString(); // Title is "Full_Table_Name
+                // nothing has changed so we won't bother to write it.
+                if (oItem.FieldValues.Count == 0)   continue;
 
                 // update sharepoint
                 oItem.Update();
@@ -1295,6 +1297,9 @@ namespace ICAS_Architect
                         else if (FieldHasChanged(row[column.ColumnName], repoRow[column.ColumnName]))
                             oItem[fieldName] = row[column.ColumnName].ToString();
                 }
+
+                // Nothing has changed, so we won't bother to write it.
+                if (oItem.FieldValues.Count == 0)   continue;
 
                 // update sharepoint
                 oItem.Update();
@@ -1402,14 +1407,11 @@ namespace ICAS_Architect
                 // Add if there's no ID, otherwise edit
                 if ( row["ID"] == DBNull.Value)
                 {   // If we are trying to add and the record already exists, skip
-                    //var repoRow = repoData.Relations.Select("Column_One='" + row["Column_One"] + "'and Column_Many='" + row["Column_Many"] + "' and Table_One_Full='" + row["Database_One"] + "." + row["Table_One"] + "'and Table_Many_Full='" + row["Database_Many"] + "." + row["Table_Many"] + "'");
-                    //if (repoRow.Length > 0) continue; // the item exists and should not be re-uploaded
+    //                var ret = repoData.Relations.Select("Column_OneId=" + row["Column_OneId"] + "'and Column_ManyId='" + row["Column_ManyId"] + "' and Table_OneId='" + row["Table_OneId"] + "' and Table_ManyId='" + row["Table_ManyId"] + "'");
+                    var ret = repoData.Relations.Select("Column_One='" + row["Column_One"] + "'and Column_Many='" + row["Column_Many"] + "' and Table_One='" + row["Database_One"] + "." + row["Table_One"] + "' and Table_Many='" + row["Database_Many"] + "." + row["Table_Many"] + "'");
+                    if (ret.Length > 0) continue; // the item exists and should not be re-uploaded
                     oItem = targetList.AddItem(new ListItemCreationInformation());
                     repoRow = null;
-                    colOneID = (long?) row["Column_OneId"];
-                    colManyID = (long?)row["Column_ManyId"];
-                    tabOneID = (long?)row["Table_OneId"];
-                    tabManyID = (long?)row["Table_ManyId"];
                     // assign the column and table IDs
                     if (!getColumnIDFromDatatable(ref colOneID, row["Column_One"].ToString(), ref tabOneID, row["Table_One"].ToString())) continue;
                     if (!getColumnIDFromDatatable(ref colManyID, row["Column_Many"].ToString(), ref tabManyID, row["Table_Many"].ToString())) continue;

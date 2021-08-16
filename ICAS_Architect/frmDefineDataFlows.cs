@@ -542,7 +542,7 @@ namespace ICAS_Architect
             // if the destination table description is null, copy it from the source
             var query3 = from dest in destTableDataTable.AsEnumerable()
                           join source in sourceTableDataTable.AsEnumerable() on dest["ID"].ToString() equals source["Destination_Table"].ToString()
-                          where dest.IsNull("Description")// && !source.IsNull("Description") 
+                          where (dest["Description"].ToString().Length == 0) && (source["Description"].ToString().Length > 0) 
                           select new
                           {
                               ID = (long?)dest["ID"],
@@ -559,7 +559,7 @@ namespace ICAS_Architect
             // if the destination column description is null, copy it from the source
             var query4 = from dest in destColumnDataTable.AsEnumerable()
                          join source in sourceColumnDataTable.AsEnumerable() on dest["Source_Column"].ToString() equals source["ID"].ToString()
-                         where (dest.IsNull("Description"))// && NOT source.IsNull("Description"))
+                         where (dest["Description"].ToString().Length == 0) && (source["Description"].ToString().Length > 0)
                          select new
                          {
                              ID = (long?)dest["ID"],
